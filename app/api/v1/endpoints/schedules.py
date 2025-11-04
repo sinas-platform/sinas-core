@@ -1,0 +1,203 @@
+"""Schedules API endpoints."""
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+from typing import List
+import uuid
+
+from app.core.database import get_db
+from app.core.auth import get_current_user_with_permissions, require_permission
+from app.models.schedule import ScheduledJob
+from app.schemas import ScheduledJobCreate, ScheduledJobUpdate, ScheduledJobResponse
+
+router = APIRouter(prefix="/schedules", tags=["schedules"])
+
+
+@router.post("", response_model=ScheduledJobResponse)
+async def create_schedule(
+    schedule_data: ScheduledJobCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_permission("sinas.schedules.create:own"))
+):
+    """Create a new scheduled job."""
+
+    # Check if schedule name already exists for this user
+    result = await db.execute(
+        select(ScheduledJob).where(
+            and_(
+                ScheduledJob.user_id == user_id,
+                ScheduledJob.name == schedule_data.name
+            )
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Schedule '{schedule_data.name}' already exists")
+
+    # Verify function exists
+    from app.models.function import Function
+    result = await db.execute(
+        select(Function).where(
+            and_(
+                Function.user_id == user_id,
+                Function.name == schedule_data.function_name
+            )
+        )
+    )
+    function = result.scalar_one_or_none()
+    if not function:
+        raise HTTPException(status_code=404, detail=f"Function '{schedule_data.function_name}' not found")
+
+    # Create schedule
+    schedule = ScheduledJob(
+        user_id=user_id,
+        name=schedule_data.name,
+        function_name=schedule_data.function_name,
+        description=schedule_data.description,
+        cron_expression=schedule_data.cron_expression,
+        timezone=schedule_data.timezone,
+        input_data=schedule_data.input_data
+    )
+
+    db.add(schedule)
+    await db.commit()
+    await db.refresh(schedule)
+
+    # TODO: Register job with scheduler
+
+    return schedule
+
+
+@router.get("", response_model=List[ScheduledJobResponse])
+async def list_schedules(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user_data = Depends(get_current_user_with_permissions)
+):
+    """List scheduled jobs (own and group-accessible)."""
+    user_id, permissions = current_user_data
+
+    # Build query based on permissions
+    if permissions.get("sinas.schedules.read:all"):
+        query = select(ScheduledJob)
+    else:
+        query = select(ScheduledJob).where(ScheduledJob.user_id == user_id)
+
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    schedules = result.scalars().all()
+
+    return schedules
+
+
+@router.get("/{schedule_id}", response_model=ScheduledJobResponse)
+async def get_schedule(
+    schedule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user_data = Depends(get_current_user_with_permissions)
+):
+    """Get a specific scheduled job."""
+    user_id, permissions = current_user_data
+
+    result = await db.execute(
+        select(ScheduledJob).where(ScheduledJob.id == schedule_id)
+    )
+    schedule = result.scalar_one_or_none()
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    # Check permissions
+    if not permissions.get("sinas.schedules.read:all"):
+        if schedule.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this schedule")
+
+    return schedule
+
+
+@router.patch("/{schedule_id}", response_model=ScheduledJobResponse)
+async def update_schedule(
+    schedule_id: uuid.UUID,
+    schedule_data: ScheduledJobUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user_data = Depends(get_current_user_with_permissions)
+):
+    """Update a scheduled job."""
+    user_id, permissions = current_user_data
+
+    result = await db.execute(
+        select(ScheduledJob).where(ScheduledJob.id == schedule_id)
+    )
+    schedule = result.scalar_one_or_none()
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    # Check permissions
+    if not permissions.get("sinas.schedules.update:all"):
+        if schedule.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to update this schedule")
+
+    # Update fields
+    if schedule_data.function_name is not None:
+        # Verify new function exists
+        from app.models.function import Function
+        result = await db.execute(
+            select(Function).where(
+                and_(
+                    Function.user_id == user_id,
+                    Function.name == schedule_data.function_name
+                )
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail=f"Function '{schedule_data.function_name}' not found")
+        schedule.function_name = schedule_data.function_name
+
+    if schedule_data.description is not None:
+        schedule.description = schedule_data.description
+    if schedule_data.cron_expression is not None:
+        schedule.cron_expression = schedule_data.cron_expression
+    if schedule_data.timezone is not None:
+        schedule.timezone = schedule_data.timezone
+    if schedule_data.input_data is not None:
+        schedule.input_data = schedule_data.input_data
+    if schedule_data.is_active is not None:
+        schedule.is_active = schedule_data.is_active
+
+    await db.commit()
+    await db.refresh(schedule)
+
+    # TODO: Update job in scheduler
+
+    return schedule
+
+
+@router.delete("/{schedule_id}")
+async def delete_schedule(
+    schedule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user_data = Depends(get_current_user_with_permissions)
+):
+    """Delete a scheduled job."""
+    user_id, permissions = current_user_data
+
+    result = await db.execute(
+        select(ScheduledJob).where(ScheduledJob.id == schedule_id)
+    )
+    schedule = result.scalar_one_or_none()
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    # Check permissions
+    if not permissions.get("sinas.schedules.delete:all"):
+        if schedule.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this schedule")
+
+    # TODO: Remove job from scheduler
+
+    await db.delete(schedule)
+    await db.commit()
+
+    return {"message": f"Schedule '{schedule.name}' deleted successfully"}

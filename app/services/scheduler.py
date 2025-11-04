@@ -82,7 +82,7 @@ class FunctionScheduler:
             self.scheduler.add_job(
                 func=self._execute_scheduled_function,
                 trigger='cron',
-                args=[str(job.id), job.function_name, job.input_data],
+                args=[str(job.id), job.function_name, job.input_data, str(job.user_id)],
                 id=str(job.id),
                 name=job.name,
                 timezone=job.timezone,
@@ -110,44 +110,52 @@ class FunctionScheduler:
         }
     
     async def _execute_scheduled_function(
-        self, 
-        job_id: str, 
-        function_name: str, 
-        input_data: Dict[str, Any]
+        self,
+        job_id: str,
+        function_name: str,
+        input_data: Dict[str, Any],
+        user_id: str
     ):
         """Execute a scheduled function."""
         execution_id = str(uuid.uuid4())
-        
+
         try:
             logger.info(f"Executing scheduled function: {function_name} (job: {job_id})")
-            
+
             # Update last_run time in database
             await self._update_job_last_run(job_id)
-            
+
             # Execute the function
             result = await executor.execute_function(
                 function_name=function_name,
                 input_data=input_data,
                 execution_id=execution_id,
                 trigger_type=TriggerType.SCHEDULE.value,
-                trigger_id=job_id
+                trigger_id=job_id,
+                user_id=user_id
             )
-            
-            logger.info(f"Scheduled function {function_name} completed successfully")
-            
+
+            logger.info(f"Scheduled function {function_name} completed successfully: {result}")
+
         except Exception as e:
             logger.error(f"Scheduled function {function_name} failed: {e}")
     
     async def _update_job_last_run(self, job_id: str):
-        """Update the last_run timestamp for a scheduled job."""
+        """Update the last_run and next_run timestamps for a scheduled job."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(ScheduledJob).where(ScheduledJob.id == uuid.UUID(job_id))
             )
             job = result.scalar_one_or_none()
-            
+
             if job:
                 job.last_run = datetime.utcnow()
+
+                # Calculate next run time from cron expression
+                from croniter import croniter
+                cron = croniter(job.cron_expression, datetime.utcnow())
+                job.next_run = cron.get_next(datetime)
+
                 await db.commit()
     
     async def add_job(self, job: ScheduledJob):

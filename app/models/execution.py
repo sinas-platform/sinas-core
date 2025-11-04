@@ -3,7 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import enum
-import uuid
+import uuid as uuid_lib
 
 from .base import Base, uuid_pk
 
@@ -24,11 +24,11 @@ class Execution(Base):
     __tablename__ = "executions"
 
     id: Mapped[uuid_pk]
-    subtenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    user_id: Mapped[uuid_lib.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     execution_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     function_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     trigger_type: Mapped[TriggerType] = mapped_column(Enum(TriggerType), nullable=False)
-    trigger_id: Mapped[uuid.UUID] = mapped_column(String(255), nullable=False)
+    trigger_id: Mapped[uuid_lib.UUID] = mapped_column(String(255), nullable=False)
     status: Mapped[ExecutionStatus] = mapped_column(
         Enum(ExecutionStatus), default=ExecutionStatus.PENDING, nullable=False
     )
@@ -40,6 +40,8 @@ class Execution(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
 
+    # Relationships
+    user: Mapped["User"] = relationship("User")
     steps: Mapped[List["StepExecution"]] = relationship(
         "StepExecution", back_populates="execution", cascade="all, delete-orphan"
     )
@@ -49,7 +51,6 @@ class StepExecution(Base):
     __tablename__ = "step_executions"
 
     id: Mapped[uuid_pk]
-    subtenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     execution_id: Mapped[str] = mapped_column(
         String(255), ForeignKey("executions.execution_id"), nullable=False, index=True
     )
@@ -64,4 +65,5 @@ class StepExecution(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # Relationships
     execution: Mapped["Execution"] = relationship("Execution", back_populates="steps")

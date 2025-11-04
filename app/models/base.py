@@ -1,37 +1,38 @@
 from sqlalchemy import DateTime, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import DeclarativeBase, mapped_column
-from sqlalchemy.types import TypeDecorator, VARCHAR
+from sqlalchemy.types import TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 import uuid
 from typing import Annotated
 from datetime import datetime
 
 
 class GUID(TypeDecorator):
-    impl = VARCHAR
+    impl = PG_UUID
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
         if dialect.name == 'postgresql':
-            return dialect.type_descriptor(VARCHAR(36))
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
         else:
-            return dialect.type_descriptor(VARCHAR(36))
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
 
     def process_bind_param(self, value, dialect):
         if value is None:
             return value
-        elif dialect.name == 'postgresql':
-            return str(value)
+        elif isinstance(value, uuid.UUID):
+            return value
         else:
-            return str(value)
+            return uuid.UUID(value)
 
     def process_result_value(self, value, dialect):
         if value is None:
             return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                return uuid.UUID(value)
+        elif isinstance(value, uuid.UUID):
             return value
+        else:
+            return uuid.UUID(value)
 
 
 class Base(DeclarativeBase):

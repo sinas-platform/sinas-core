@@ -7,8 +7,13 @@ import sys
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.models.base import Base
+from app.models.base import Base, GUID
 from app.core.config import settings
+# Import all models to ensure they're registered with Base.metadata
+import app.models
+
+# Make GUID available to migrations
+import app.models.base
 
 # this is the Alembic Config object
 config = context.config

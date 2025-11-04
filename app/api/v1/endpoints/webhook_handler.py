@@ -1,11 +1,12 @@
+"""Webhook handler endpoint for executing functions via HTTP."""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import uuid
 
 from app.core.database import get_db
-from app.core.auth import get_subtenant_context
+from app.core.auth import verify_jwt_or_api_key
 from app.models.webhook import Webhook
 from app.models.execution import TriggerType
 from app.services.execution_engine import executor
@@ -18,7 +19,7 @@ async def extract_request_data(request: Request) -> Dict[str, Any]:
     # Get request body
     body = {}
     content_type = request.headers.get("content-type", "")
-    
+
     if "application/json" in content_type:
         try:
             body = await request.json()
@@ -37,19 +38,19 @@ async def extract_request_data(request: Request) -> Dict[str, Any]:
             body = {"raw": raw_body.decode("utf-8")} if raw_body else {}
         except Exception:
             body = {}
-    
+
     # Extract headers (exclude some internal ones)
     headers = {
-        k: v for k, v in request.headers.items() 
+        k: v for k, v in request.headers.items()
         if not k.lower().startswith(('host', 'user-agent', 'accept-encoding'))
     }
-    
+
     # Extract query parameters
     query = dict(request.query_params)
-    
+
     # Extract path parameters
     path_params = dict(request.path_params)
-    
+
     return {
         "body": body,
         "headers": headers,
@@ -62,18 +63,17 @@ async def extract_request_data(request: Request) -> Dict[str, Any]:
 
 
 @router.api_route(
-    "/{path:path}", 
+    "/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     operation_id="handle_webhook_request"
 )
 async def handle_webhook(
     path: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    subtenant_id: str = Depends(get_subtenant_context())
+    db: AsyncSession = Depends(get_db)
 ):
     """Handle incoming webhook requests by executing the associated function."""
-    
+
     # Look up webhook configuration
     result = await db.execute(
         select(Webhook).where(
@@ -85,30 +85,43 @@ async def handle_webhook(
         )
     )
     webhook = result.scalar_one_or_none()
-    print("WEBHOOK FOUND:", webhook)
-    
+
     if not webhook:
         raise HTTPException(
-            status_code=404, 
+            status_code=404,
             detail=f"No active webhook found for path '{path}' and method '{request.method}'"
         )
-    
-    # TODO: Check authentication if webhook.requires_auth is True
-    
+
+    # Check authentication if required
+    user_id: Optional[str] = None
+    if webhook.requires_auth:
+        # Extract authorization header
+        auth_header = request.headers.get("authorization")
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Authorization required")
+
+        try:
+            user_id, email, permissions = await verify_jwt_or_api_key(auth_header, db)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    else:
+        # Use webhook owner's user_id for unauthenticated webhooks
+        user_id = str(webhook.user_id)
+
     try:
         # Extract request data
         request_data = await extract_request_data(request)
-        
+
         # Merge with default values if provided
         if webhook.default_values:
             # Default values are applied at the top level
             final_input = {**webhook.default_values, **request_data}
         else:
             final_input = request_data
-        
+
         # Generate execution ID
         execution_id = str(uuid.uuid4())
-        
+
         # Execute the function
         result = await executor.execute_function(
             function_name=webhook.function_name,
@@ -116,15 +129,15 @@ async def handle_webhook(
             execution_id=execution_id,
             trigger_type=TriggerType.WEBHOOK.value,
             trigger_id=str(webhook.id),
-            subtenant_id=subtenant_id
+            user_id=user_id
         )
-        
+
         return {
             "success": True,
             "execution_id": execution_id,
             "result": result
         }
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=500,

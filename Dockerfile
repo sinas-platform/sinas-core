@@ -9,6 +9,12 @@ ENV POETRY_CACHE_DIR=/tmp/poetry_cache
 
 WORKDIR /app
 
+# Install system dependencies (needed for psycopg2 and other packages)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Poetry
 RUN pip install poetry
 
@@ -21,8 +27,11 @@ RUN poetry config virtualenvs.create false && poetry install --only main --no-in
 # Copy the rest of the application
 COPY . /app/
 
+# Create directory for logs
+RUN mkdir -p /app/logs
+
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run database migrations on startup, then start the application
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000

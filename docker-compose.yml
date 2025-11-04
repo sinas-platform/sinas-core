@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Redis - always running for logging
+  redis:
+    image: redis:7-alpine
+    container_name: sinas-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # PostgreSQL - only used if DATABASE_URL is not set
+  # Requires POSTGRES_PASSWORD to be set in .env
+  postgres:
+    image: postgres:16-alpine
+    container_name: sinas-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file}
+      POSTGRES_DB: sinas
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      # Only start postgres if using local database
+      # Use: docker-compose --profile local-db up
+      - local-db
+
+  # SINAS Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sinas-app
+    ports:
+      - "8000:8000"
+    environment:
+      # Database configuration
+      # If DATABASE_URL is set, it will be used. Otherwise, use postgres service
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/sinas}
+
+      # Redis configuration (hardcoded to docker service)
+      REDIS_URL: redis://redis:6379/0
+
+      # Application configuration
+      DEBUG: ${DEBUG:-false}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env file}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+
+      # OTP Configuration
+      OTP_EXPIRE_MINUTES: ${OTP_EXPIRE_MINUTES:-10}
+
+      # SMTP Configuration
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_DOMAIN: ${SMTP_DOMAIN}
+
+      # LLM Provider Configuration
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LOCAL_LLM_ENDPOINT: ${LOCAL_LLM_ENDPOINT:-http://host.docker.internal:11434}
+      DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-ollama}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-}
+
+      # Function Execution Settings
+      FUNCTION_TIMEOUT: ${FUNCTION_TIMEOUT:-300}
+      MAX_FUNCTION_MEMORY: ${MAX_FUNCTION_MEMORY:-512}
+
+      # Package Management
+      ALLOW_PACKAGE_INSTALLATION: ${ALLOW_PACKAGE_INSTALLATION:-true}
+
+      # Encryption
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env file}
+
+      # Admin user
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false  # Only required if using local-db profile
+    volumes:
+      # Mount code for development (comment out for production)
+      - .:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  redis_data:
+  postgres_data:

@@ -1,0 +1,153 @@
+# SINAS Permission Definitions
+# Format: service.resource.action:scope
+# Scopes: own (user's own resources), group (user's group resources), all (all resources)
+
+# Chats - AI Conversation Management
+sinas.chats.create:own
+sinas.chats.read:own
+sinas.chats.read:group
+sinas.chats.read:all
+sinas.chats.update:own
+sinas.chats.update:all
+sinas.chats.delete:own
+sinas.chats.delete:all
+
+# Messages - Chat Messages
+sinas.messages.create:own
+sinas.messages.read:own
+sinas.messages.read:group
+sinas.messages.read:all
+
+# Assistants - AI Assistant Management
+sinas.assistants.create:own
+sinas.assistants.read:own
+sinas.assistants.read:all
+sinas.assistants.update:own
+sinas.assistants.update:all
+sinas.assistants.delete:own
+sinas.assistants.delete:all
+
+# Memories - Context Memory Storage
+sinas.memories.create:own
+sinas.memories.read:own
+sinas.memories.read:group
+sinas.memories.read:all
+sinas.memories.update:own
+sinas.memories.update:all
+sinas.memories.delete:own
+sinas.memories.delete:all
+
+# Functions - Python Function Management
+sinas.functions.create:own
+sinas.functions.read:own
+sinas.functions.read:all
+sinas.functions.update:own
+sinas.functions.update:all
+sinas.functions.delete:own
+sinas.functions.delete:all
+sinas.functions.execute:own
+sinas.functions.execute:all
+
+# Webhooks - Webhook Endpoint Management
+sinas.webhooks.create:own
+sinas.webhooks.read:own
+sinas.webhooks.read:all
+sinas.webhooks.update:own
+sinas.webhooks.update:all
+sinas.webhooks.delete:own
+sinas.webhooks.delete:all
+
+# Schedules - Scheduled Job Management
+sinas.schedules.create:own
+sinas.schedules.read:own
+sinas.schedules.read:all
+sinas.schedules.update:own
+sinas.schedules.update:all
+sinas.schedules.delete:own
+sinas.schedules.delete:all
+
+# Executions - Execution History and Monitoring
+sinas.executions.read:own
+sinas.executions.read:all
+
+# Packages - Python Package Management
+sinas.packages.install:own
+sinas.packages.read:own
+sinas.packages.read:all
+sinas.packages.delete:own
+sinas.packages.delete:all
+
+# MCP Servers - Model Context Protocol Integration
+sinas.mcp.create:all
+sinas.mcp.read:all
+sinas.mcp.update:all
+sinas.mcp.delete:all
+sinas.mcp.execute:all
+
+# Users - User Management
+sinas.users.read:own
+sinas.users.update:own
+sinas.users.read:all
+sinas.users.update:all
+sinas.users.delete:all
+
+# API Keys - API Key Management
+sinas.apikeys.create:own
+sinas.apikeys.read:own
+sinas.apikeys.update:own
+sinas.apikeys.delete:own
+sinas.apikeys.read:all
+sinas.apikeys.delete:all
+
+# Groups - Group Management
+sinas.groups.create:all
+sinas.groups.read:all
+sinas.groups.update:all
+sinas.groups.delete:all
+sinas.groups.manage_members:all
+sinas.groups.manage_permissions:all
+
+# Ontology - Data Sources
+sinas.ontology.datasources.create:all
+sinas.ontology.datasources.read:all
+sinas.ontology.datasources.update:all
+sinas.ontology.datasources.delete:all
+
+# Ontology - Concepts
+sinas.ontology.concepts.create:all
+sinas.ontology.concepts.read:all
+sinas.ontology.concepts.update:all
+sinas.ontology.concepts.delete:all
+
+# Ontology - Properties
+sinas.ontology.properties.create:all
+sinas.ontology.properties.read:all
+sinas.ontology.properties.update:all
+sinas.ontology.properties.delete:all
+
+# Ontology - Relationships
+sinas.ontology.relationships.create:all
+sinas.ontology.relationships.read:all
+sinas.ontology.relationships.update:all
+sinas.ontology.relationships.delete:all
+
+# Ontology - Queries
+sinas.ontology.queries.create:all
+sinas.ontology.queries.read:all
+sinas.ontology.queries.update:all
+sinas.ontology.queries.delete:all
+sinas.ontology.queries.execute:all
+
+# Ontology - Endpoints
+sinas.ontology.endpoints.create:all
+sinas.ontology.endpoints.read:all
+sinas.ontology.endpoints.update:all
+sinas.ontology.endpoints.delete:all
+
+# Ontology - Data (Dynamic per concept)
+# Format: sinas.ontology.data.{namespace}.{concept}.{action}:scope
+# Example: sinas.ontology.data.commerce.customer.create:all
+sinas.ontology.data.*.create:all
+sinas.ontology.data.*.read:all
+sinas.ontology.data.*.update:all
+sinas.ontology.data.*.delete:all

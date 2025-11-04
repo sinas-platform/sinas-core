@@ -1,0 +1,102 @@
+"""Function schemas."""
+from pydantic import BaseModel, Field, validator
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import uuid
+import ast
+import json
+
+
+class FunctionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, pattern=r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+    description: Optional[str] = None
+    code: str = Field(..., min_length=1)
+    input_schema: Dict[str, Any]
+    output_schema: Dict[str, Any]
+    requirements: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+
+    @validator('code')
+    def validate_code(cls, v):
+        try:
+            ast.parse(v)
+        except SyntaxError as e:
+            raise ValueError(f"Invalid Python syntax: {e}")
+        return v
+
+    @validator('input_schema', 'output_schema')
+    def validate_schema(cls, v):
+        try:
+            # Try to serialize and deserialize to validate JSON schema format
+            json.dumps(v)
+            # Basic check for required JSON Schema fields
+            if not isinstance(v, dict):
+                raise ValueError("Schema must be a dictionary")
+            if 'type' not in v:
+                raise ValueError("Schema must have a 'type' field")
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Invalid JSON schema: {e}")
+        return v
+
+
+class FunctionUpdate(BaseModel):
+    description: Optional[str] = None
+    code: Optional[str] = None
+    input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
+    requirements: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+    @validator('code')
+    def validate_code(cls, v):
+        if v is not None:
+            try:
+                ast.parse(v)
+            except SyntaxError as e:
+                raise ValueError(f"Invalid Python syntax: {e}")
+        return v
+
+    @validator('input_schema', 'output_schema')
+    def validate_schema(cls, v):
+        if v is not None:
+            try:
+                json.dumps(v)
+                if not isinstance(v, dict):
+                    raise ValueError("Schema must be a dictionary")
+                if 'type' not in v:
+                    raise ValueError("Schema must have a 'type' field")
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Invalid JSON schema: {e}")
+        return v
+
+
+class FunctionResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    code: str
+    input_schema: Dict[str, Any]
+    output_schema: Dict[str, Any]
+    requirements: List[str]
+    tags: List[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FunctionVersionResponse(BaseModel):
+    id: uuid.UUID
+    function_id: uuid.UUID
+    version: int
+    code: str
+    input_schema: Dict[str, Any]
+    output_schema: Dict[str, Any]
+    created_at: datetime
+    created_by: str
+
+    class Config:
+        from_attributes = True

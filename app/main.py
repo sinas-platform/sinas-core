@@ -2,10 +2,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router as api_router
+from app.api.v1 import router as api_v1_router
 from app.core.config import settings
+from app.core.auth import initialize_default_groups, initialize_superadmin
+from app.core.database import AsyncSessionLocal
 from app.services.scheduler import scheduler
 from app.services.redis_logger import redis_logger
+from app.services.mcp import mcp_client
 
 
 @asynccontextmanager
@@ -13,6 +16,19 @@ async def lifespan(app: FastAPI):
     # Startup
     await redis_logger.connect()
     await scheduler.start()
+
+    # Initialize default groups
+    async with AsyncSessionLocal() as db:
+        await initialize_default_groups(db)
+
+    # Initialize superadmin user
+    async with AsyncSessionLocal() as db:
+        await initialize_superadmin(db)
+
+    # Initialize MCP client
+    async with AsyncSessionLocal() as db:
+        await mcp_client.initialize(db)
+
     yield
     # Shutdown
     await scheduler.stop()
@@ -20,9 +36,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Maestro Cloud Functions Platform",
-    description="Execute Python functions via webhooks and schedules",
-    version="0.1.0",
+    title="SINAS - AI Agent Platform",
+    description="Multi-agent AI platform with LLM chat, webhooks, MCP tools, and function execution",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -34,7 +50,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/api/v1")
+# Include API v1 routes
+app.include_router(api_v1_router, prefix="/api/v1")
 
 
 @app.get("/health")
