@@ -40,6 +40,7 @@ async def create_assistant(
         initial_messages=request.initial_messages,
         enabled_webhooks=request.enabled_webhooks or [],
         enabled_mcp_tools=request.enabled_mcp_tools or [],
+        enabled_assistants=request.enabled_assistants or [],
         webhook_parameters=request.webhook_parameters or {},
         mcp_tool_parameters=request.mcp_tool_parameters or {},
         context_namespaces=request.context_namespaces,
@@ -146,6 +147,8 @@ async def update_assistant(
         assistant.enabled_webhooks = request.enabled_webhooks
     if request.enabled_mcp_tools is not None:
         assistant.enabled_mcp_tools = request.enabled_mcp_tools
+    if request.enabled_assistants is not None:
+        assistant.enabled_assistants = request.enabled_assistants
     if request.webhook_parameters is not None:
         assistant.webhook_parameters = request.webhook_parameters
     if request.mcp_tool_parameters is not None:

@@ -53,9 +53,15 @@ class TagService:
         applies_to: Optional[ResourceType] = None
     ) -> List[TagDefinition]:
         """Get all tag definitions, optionally filtered by resource type."""
+        from sqlalchemy.dialects.postgresql import JSONB
+        from sqlalchemy import cast
+
         query = select(TagDefinition)
         if applies_to:
-            query = query.where(TagDefinition.applies_to.contains([applies_to.value]))
+            # Cast JSON to JSONB for @> operator
+            query = query.where(
+                cast(TagDefinition.applies_to, JSONB).contains([applies_to.value])
+            )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
@@ -123,8 +129,12 @@ class TagService:
         resource_id: str
     ) -> List[TagInstance]:
         """Get all tags for a resource."""
+        from sqlalchemy.orm import selectinload
+
         result = await self.db.execute(
-            select(TagInstance).where(
+            select(TagInstance)
+            .options(selectinload(TagInstance.tag_definition))
+            .where(
                 TagInstance.resource_type == resource_type,
                 TagInstance.resource_id == resource_id
             )

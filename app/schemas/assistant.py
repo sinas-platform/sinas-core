@@ -18,6 +18,7 @@ class AssistantCreate(BaseModel):
     group_id: Optional[uuid.UUID] = None
     enabled_webhooks: Optional[List[str]] = None
     enabled_mcp_tools: Optional[List[str]] = None
+    enabled_assistants: Optional[List[str]] = None  # List of assistant IDs that can be called as tools
     webhook_parameters: Optional[Dict[str, Any]] = None
     mcp_tool_parameters: Optional[Dict[str, Any]] = None
     context_namespaces: Optional[List[str]] = None  # None = all namespaces
@@ -37,6 +38,7 @@ class AssistantUpdate(BaseModel):
     initial_messages: Optional[List[Dict[str, str]]] = None
     enabled_webhooks: Optional[List[str]] = None
     enabled_mcp_tools: Optional[List[str]] = None
+    enabled_assistants: Optional[List[str]] = None  # List of assistant IDs that can be called as tools
     webhook_parameters: Optional[Dict[str, Any]] = None
     mcp_tool_parameters: Optional[Dict[str, Any]] = None
     context_namespaces: Optional[List[str]] = None
@@ -60,6 +62,7 @@ class AssistantResponse(BaseModel):
     initial_messages: Optional[List[Dict[str, str]]]
     enabled_webhooks: List[str]
     enabled_mcp_tools: List[str]
+    enabled_assistants: List[str]  # List of assistant IDs that can be called as tools
     webhook_parameters: Dict[str, Any]
     mcp_tool_parameters: Dict[str, Any]
     context_namespaces: Optional[List[str]]

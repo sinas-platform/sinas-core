@@ -77,7 +77,8 @@ class MessageService:
             assistant_id=assistant_id,
             title=name or f"Chat with {assistant.name}",
             enabled_webhooks=assistant.enabled_webhooks,
-            enabled_mcp_tools=assistant.enabled_mcp_tools
+            enabled_mcp_tools=assistant.enabled_mcp_tools,
+            enabled_assistants=assistant.enabled_assistants
         )
         self.db.add(chat)
         await self.db.commit()
@@ -489,6 +490,48 @@ class MessageService:
 
         return messages
 
+    async def _get_assistant_tools(self, assistant_ids: List[str]) -> List[Dict[str, Any]]:
+        """Get tool definitions for enabled assistants."""
+        tools = []
+
+        for assistant_id in assistant_ids:
+            result = await self.db.execute(
+                select(Assistant).where(Assistant.id == assistant_id)
+            )
+            assistant = result.scalar_one_or_none()
+
+            if not assistant or not assistant.is_active:
+                continue
+
+            # Build tool definition for this assistant
+            tool_def = {
+                "type": "function",
+                "function": {
+                    "name": f"call_assistant_{assistant.name.lower().replace(' ', '_')}",
+                    "description": assistant.description or f"Call the {assistant.name} assistant"
+                }
+            }
+
+            # If assistant has input_schema, use it; otherwise simple string input
+            if assistant.input_schema and assistant.input_schema.get("properties"):
+                tool_def["function"]["parameters"] = assistant.input_schema
+            else:
+                # Default: simple prompt/query parameter
+                tool_def["function"]["parameters"] = {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "The prompt or query to send to the assistant"
+                        }
+                    },
+                    "required": ["prompt"]
+                }
+
+            tools.append(tool_def)
+
+        return tools
+
     async def _get_available_tools(
         self,
         user_id: str,
@@ -498,7 +541,7 @@ class MessageService:
         message_enabled_mcp: Optional[List[str]],
         message_disabled_mcp: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
-        """Get all available tools (webhooks + MCP + context + ontology + execution continuation)."""
+        """Get all available tools (webhooks + MCP + context + ontology + assistants + execution continuation)."""
         tools = []
 
         # Add context tools (always available)
@@ -508,6 +551,12 @@ class MessageService:
         # Add ontology tools (always available)
         ontology_tool_defs = OntologyTools.get_tool_definitions()
         tools.extend(ontology_tool_defs)
+
+        # Add assistant tools
+        assistant_enabled = chat.enabled_assistants or []
+        if assistant_enabled:
+            assistant_tools = await self._get_assistant_tools(assistant_enabled)
+            tools.extend(assistant_tools)
 
         # Determine webhook configuration
         webhook_enabled = message_enabled_webhooks or chat.enabled_webhooks or None
@@ -571,6 +620,74 @@ class MessageService:
             })
 
         return tools
+
+    async def _execute_assistant_tool(
+        self,
+        chat: Chat,
+        user_id: str,
+        user_token: str,
+        tool_name: str,
+        arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute an assistant tool call by creating a new chat and getting a response."""
+        # Extract assistant ID from enabled_assistants based on tool name
+        # Tool name format: call_assistant_{name}
+        assistant = None
+        for assistant_id in chat.enabled_assistants:
+            result = await self.db.execute(
+                select(Assistant).where(Assistant.id == assistant_id)
+            )
+            candidate = result.scalar_one_or_none()
+            if candidate:
+                expected_tool_name = f"call_assistant_{candidate.name.lower().replace(' ', '_')}"
+                if expected_tool_name == tool_name:
+                    assistant = candidate
+                    break
+
+        if not assistant:
+            return {"error": f"Assistant not found for tool {tool_name}"}
+
+        # Prepare input data for the assistant
+        # If arguments contain just "prompt", send as message content
+        # Otherwise, use as input_data for validation
+        if "prompt" in arguments and len(arguments) == 1:
+            # Simple prompt mode
+            input_data = {}
+            content = arguments["prompt"]
+        else:
+            # Structured input mode
+            input_data = arguments
+            content = json.dumps(arguments)
+
+        # Create a new chat for this assistant call
+        try:
+            sub_chat = await self.create_chat_with_assistant(
+                assistant_id=str(assistant.id),
+                user_id=user_id,
+                input_data=input_data,
+                group_id=str(chat.group_id) if chat.group_id else None,
+                name=f"Sub-chat: {assistant.name}"
+            )
+
+            # Send message to the assistant
+            response_message = await self.send_message(
+                chat_id=str(sub_chat.id),
+                user_id=user_id,
+                user_token=user_token,
+                content=content,
+                template_variables=input_data
+            )
+
+            # Return the assistant's response
+            return {
+                "assistant_name": assistant.name,
+                "response": response_message.content,
+                "chat_id": str(sub_chat.id)
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to execute assistant tool {tool_name}: {e}")
+            return {"error": str(e)}
 
     async def _handle_tool_calls(
         self,
@@ -641,6 +758,15 @@ class MessageService:
                         trigger_id="",  # Not needed for resume
                         user_id=user_id,
                         resume_data=arguments["input"]
+                    )
+                elif tool_name.startswith("call_assistant_"):
+                    # Handle assistant tool calls
+                    result = await self._execute_assistant_tool(
+                        chat=chat,
+                        user_id=user_id,
+                        user_token=user_token,
+                        tool_name=tool_name,
+                        arguments=arguments
                     )
                 elif tool_name in mcp_client.tools:
                     result = await mcp_client.execute_tool(tool_name, arguments)

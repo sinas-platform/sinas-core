@@ -16,6 +16,7 @@ class Chat(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     enabled_webhooks: Mapped[List[str]] = mapped_column(JSON, default=list)
     enabled_mcp_tools: Mapped[List[str]] = mapped_column(JSON, default=list)
+    enabled_assistants: Mapped[List[str]] = mapped_column(JSON, default=list)  # List of assistant IDs
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 

@@ -41,6 +41,7 @@ class Assistant(Base):
     # Tool access
     enabled_webhooks: Mapped[List[str]] = mapped_column(JSON, default=list)
     enabled_mcp_tools: Mapped[List[str]] = mapped_column(JSON, default=list)
+    enabled_assistants: Mapped[List[str]] = mapped_column(JSON, default=list)  # List of assistant IDs
     webhook_parameters: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     mcp_tool_parameters: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
 
