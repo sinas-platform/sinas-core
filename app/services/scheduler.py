@@ -22,7 +22,7 @@ class FunctionScheduler:
     def __init__(self):
         # Configure job stores and executors
         jobstores = {
-            'default': SQLAlchemyJobStore(url=settings.database_url)
+            'default': SQLAlchemyJobStore(url=settings.get_database_url)
         }
         executors = {
             'default': AsyncIOExecutor()
