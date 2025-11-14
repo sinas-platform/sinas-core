@@ -615,25 +615,40 @@ class MessageService:
                 continue
 
             # Build tool definition for this assistant
+            # Use clean name, store ID as hidden parameter
             tool_def = {
                 "type": "function",
                 "function": {
-                    "name": f"call_assistant_{assistant.name.lower().replace(' ', '_')}",
-                    "description": assistant.description or f"Call the {assistant.name} assistant"
+                    "name": f"call_assistant_{assistant.name.lower().replace(' ', '_').replace('-', '_')}",
+                    "description": f"{assistant.name}: {assistant.description}" if assistant.description else f"Call the {assistant.name} assistant"
                 }
             }
 
-            # If assistant has input_schema, use it; otherwise simple string input
+            # Build parameters - always include assistant_id as a hidden constant
             if assistant.input_schema and assistant.input_schema.get("properties"):
-                tool_def["function"]["parameters"] = assistant.input_schema
+                # Merge input_schema with assistant_id
+                params = dict(assistant.input_schema)
+                if "properties" not in params:
+                    params["properties"] = {}
+                params["properties"]["_assistant_id"] = {
+                    "type": "string",
+                    "description": "Internal assistant identifier",
+                    "const": str(assistant.id)  # Force this specific value
+                }
+                tool_def["function"]["parameters"] = params
             else:
-                # Default: simple prompt/query parameter
+                # Default: simple prompt + hidden assistant_id
                 tool_def["function"]["parameters"] = {
                     "type": "object",
                     "properties": {
                         "prompt": {
                             "type": "string",
                             "description": "The prompt or query to send to the assistant"
+                        },
+                        "_assistant_id": {
+                            "type": "string",
+                            "description": "Internal assistant identifier",
+                            "const": str(assistant.id)
                         }
                     },
                     "required": ["prompt"]
@@ -771,25 +786,27 @@ class MessageService:
         user_id: str,
         user_token: str,
         tool_name: str,
-        arguments: Dict[str, Any]
+        arguments: Dict[str, Any],
+        enabled_assistant_ids: List[str]
     ) -> Dict[str, Any]:
         """Execute an assistant tool call by creating a new chat and getting a response."""
-        # Extract assistant ID from enabled_assistants based on tool name
-        # Tool name format: call_assistant_{name}
-        assistant = None
-        for assistant_id in chat.enabled_assistants:
-            result = await self.db.execute(
-                select(Assistant).where(Assistant.id == assistant_id)
-            )
-            candidate = result.scalar_one_or_none()
-            if candidate:
-                expected_tool_name = f"call_assistant_{candidate.name.lower().replace(' ', '_')}"
-                if expected_tool_name == tool_name:
-                    assistant = candidate
-                    break
+        # Extract assistant ID from arguments (passed as _assistant_id parameter)
+        assistant_id_str = arguments.get("_assistant_id")
+        if not assistant_id_str:
+            return {"error": f"Missing _assistant_id in assistant tool call"}
+
+        # Verify this assistant ID is in enabled list
+        if assistant_id_str not in enabled_assistant_ids:
+            return {"error": f"Assistant {assistant_id_str} not enabled for this assistant"}
+
+        # Load assistant
+        result = await self.db.execute(
+            select(Assistant).where(Assistant.id == assistant_id_str)
+        )
+        assistant = result.scalar_one_or_none()
 
         if not assistant:
-            return {"error": f"Assistant not found for tool {tool_name}"}
+            return {"error": f"Assistant not found: {assistant_id_str}"}
 
         # Prepare input data for the assistant
         # If arguments contain just "prompt", send as message content
@@ -910,13 +927,23 @@ class MessageService:
                         resume_data=arguments["input"]
                     )
                 elif tool_name.startswith("call_assistant_"):
-                    # Handle assistant tool calls
+                    # Handle assistant tool calls - get enabled assistants from chat's assistant
+                    enabled_assistant_ids = []
+                    if chat and chat.assistant_id:
+                        result_assistant = await self.db.execute(
+                            select(Assistant).where(Assistant.id == chat.assistant_id)
+                        )
+                        chat_assistant = result_assistant.scalar_one_or_none()
+                        if chat_assistant:
+                            enabled_assistant_ids = chat_assistant.enabled_assistants or []
+
                     result = await self._execute_assistant_tool(
                         chat=chat,
                         user_id=user_id,
                         user_token=user_token,
                         tool_name=tool_name,
-                        arguments=arguments
+                        arguments=arguments,
+                        enabled_assistant_ids=enabled_assistant_ids
                     )
                 elif tool_name in mcp_client.tools:
                     result = await mcp_client.execute_tool(tool_name, arguments)
