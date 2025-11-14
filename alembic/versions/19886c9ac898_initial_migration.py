@@ -1,12 +1,13 @@
 """initial migration
 
 Revision ID: 19886c9ac898
-Revises: 
+Revises:
 Create Date: 2025-11-14 17:23:34.332103
 
 """
 from alembic import op
 import sqlalchemy as sa
+from app.models.base import GUID
 
 
 # revision identifiers, used by Alembic.
@@ -32,7 +33,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_email_templates_id'), 'email_templates', ['id'], unique=False)
     op.create_index(op.f('ix_email_templates_name'), 'email_templates', ['name'], unique=True)
     op.create_table('groups',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('email_domain', sa.String(length=255), nullable=True),
@@ -43,7 +44,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_groups_email_domain'), 'groups', ['email_domain'], unique=False)
     op.create_index(op.f('ix_groups_name'), 'groups', ['name'], unique=True)
     op.create_table('llm_providers',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('provider_type', sa.String(length=50), nullable=False),
     sa.Column('api_key', sa.Text(), nullable=True),
@@ -58,7 +59,7 @@ def upgrade() -> None:
     sa.UniqueConstraint('name')
     )
     op.create_table('mcp_servers',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('url', sa.String(length=1000), nullable=False),
     sa.Column('protocol', sa.String(length=20), nullable=False),
@@ -73,7 +74,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_mcp_servers_name'), 'mcp_servers', ['name'], unique=True)
     op.create_table('otp_sessions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('otp_code', sa.String(length=10), nullable=False),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
@@ -83,7 +84,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_otp_sessions_email'), 'otp_sessions', ['email'], unique=False)
     op.create_table('users',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -92,8 +93,8 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
     op.create_table('api_keys',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('key_hash', sa.String(length=64), nullable=False),
     sa.Column('key_prefix', sa.String(length=16), nullable=False),
@@ -102,9 +103,9 @@ def upgrade() -> None:
     sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=True),
+    sa.Column('created_by', GUID(), nullable=True),
     sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('revoked_by', app.models.base.GUID(), nullable=True),
+    sa.Column('revoked_by', GUID(), nullable=True),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['revoked_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
@@ -115,12 +116,12 @@ def upgrade() -> None:
     op.create_index(op.f('ix_api_keys_key_prefix'), 'api_keys', ['key_prefix'], unique=False)
     op.create_index(op.f('ix_api_keys_user_id'), 'api_keys', ['user_id'], unique=False)
     op.create_table('assistants',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=True),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=True),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('llm_provider_id', app.models.base.GUID(), nullable=True),
+    sa.Column('llm_provider_id', GUID(), nullable=True),
     sa.Column('model', sa.String(length=100), nullable=True),
     sa.Column('temperature', sa.Float(), nullable=False),
     sa.Column('system_prompt', sa.Text(), nullable=True),
@@ -162,9 +163,9 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_concepts_group_id'), 'concepts', ['group_id'], unique=False)
     op.create_table('context_stores',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('namespace', sa.String(length=100), nullable=False),
     sa.Column('key', sa.String(length=255), nullable=False),
     sa.Column('value', sa.JSON(), nullable=False),
@@ -203,17 +204,17 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_data_sources_group_id'), 'data_sources', ['group_id'], unique=False)
     op.create_table('folders',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('owner_type', sa.Enum('USER', 'GROUP', name='ownertype'), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=True),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('user_id', GUID(), nullable=True),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('permission_scope', sa.Enum('OWN', 'GROUP', 'ALL', name='permissionscope'), nullable=False),
-    sa.Column('parent_folder_id', app.models.base.GUID(), nullable=True),
+    sa.Column('parent_folder_id', GUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['group_id'], ['groups.id'], ),
     sa.ForeignKeyConstraint(['parent_folder_id'], ['folders.id'], ),
@@ -224,9 +225,9 @@ def upgrade() -> None:
     op.create_index(op.f('ix_folders_parent_folder_id'), 'folders', ['parent_folder_id'], unique=False)
     op.create_index(op.f('ix_folders_user_id'), 'folders', ['user_id'], unique=False)
     op.create_table('functions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('code', sa.Text(), nullable=False),
@@ -246,15 +247,15 @@ def upgrade() -> None:
     op.create_index(op.f('ix_functions_name'), 'functions', ['name'], unique=False)
     op.create_index(op.f('ix_functions_user_id'), 'functions', ['user_id'], unique=False)
     op.create_table('group_members',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
     sa.Column('role', sa.String(length=100), nullable=True),
     sa.Column('active', sa.Boolean(), nullable=False),
     sa.Column('added_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('added_by', app.models.base.GUID(), nullable=True),
+    sa.Column('added_by', GUID(), nullable=True),
     sa.Column('removed_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('removed_by', app.models.base.GUID(), nullable=True),
+    sa.Column('removed_by', GUID(), nullable=True),
     sa.ForeignKeyConstraint(['added_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['group_id'], ['groups.id'], ),
     sa.ForeignKeyConstraint(['removed_by'], ['users.id'], ),
@@ -264,8 +265,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_group_members_group_id'), 'group_members', ['group_id'], unique=False)
     op.create_index(op.f('ix_group_members_user_id'), 'group_members', ['user_id'], unique=False)
     op.create_table('group_permissions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=False),
     sa.Column('permission_key', sa.String(length=255), nullable=False),
     sa.Column('permission_value', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -277,12 +278,12 @@ def upgrade() -> None:
     op.create_index(op.f('ix_group_permissions_group_id'), 'group_permissions', ['group_id'], unique=False)
     op.create_index(op.f('ix_group_permissions_permission_key'), 'group_permissions', ['permission_key'], unique=False)
     op.create_table('installed_packages',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
     sa.Column('package_name', sa.String(length=255), nullable=False),
     sa.Column('version', sa.String(length=50), nullable=True),
     sa.Column('installed_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('installed_by', app.models.base.GUID(), nullable=True),
+    sa.Column('installed_by', GUID(), nullable=True),
     sa.ForeignKeyConstraint(['installed_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -291,9 +292,9 @@ def upgrade() -> None:
     op.create_index(op.f('ix_installed_packages_package_name'), 'installed_packages', ['package_name'], unique=False)
     op.create_index(op.f('ix_installed_packages_user_id'), 'installed_packages', ['user_id'], unique=False)
     op.create_table('scheduled_jobs',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('function_name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -313,7 +314,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_scheduled_jobs_name'), 'scheduled_jobs', ['name'], unique=False)
     op.create_index(op.f('ix_scheduled_jobs_user_id'), 'scheduled_jobs', ['user_id'], unique=False)
     op.create_table('tag_definitions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('display_name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -323,15 +324,15 @@ def upgrade() -> None:
     sa.Column('is_required', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_tag_definitions_name'), 'tag_definitions', ['name'], unique=True)
     op.create_table('webhooks',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=True),
     sa.Column('path', sa.String(length=255), nullable=False),
     sa.Column('function_name', sa.String(length=255), nullable=False),
     sa.Column('http_method', sa.Enum('GET', 'POST', 'PUT', 'DELETE', 'PATCH', name='httpmethod'), nullable=False),
@@ -350,10 +351,10 @@ def upgrade() -> None:
     op.create_index(op.f('ix_webhooks_path'), 'webhooks', ['path'], unique=False)
     op.create_index(op.f('ix_webhooks_user_id'), 'webhooks', ['user_id'], unique=False)
     op.create_table('chats',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
-    sa.Column('group_id', app.models.base.GUID(), nullable=True),
-    sa.Column('assistant_id', app.models.base.GUID(), nullable=True),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
+    sa.Column('group_id', GUID(), nullable=True),
+    sa.Column('assistant_id', GUID(), nullable=True),
     sa.Column('title', sa.String(length=500), nullable=False),
     sa.Column('enabled_webhooks', sa.JSON(), nullable=False),
     sa.Column('enabled_mcp_tools', sa.JSON(), nullable=False),
@@ -384,18 +385,18 @@ def upgrade() -> None:
     sa.UniqueConstraint('concept_id')
     )
     op.create_table('documents',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('filetype', sa.Enum('MD', 'HTML', 'CODE', 'TXT', name='filetype'), nullable=False),
     sa.Column('source', sa.String(length=500), nullable=True),
-    sa.Column('folder_id', app.models.base.GUID(), nullable=False),
+    sa.Column('folder_id', GUID(), nullable=False),
     sa.Column('content_id', sa.Uuid(), nullable=False),
-    sa.Column('auto_description_webhook_id', app.models.base.GUID(), nullable=True),
+    sa.Column('auto_description_webhook_id', GUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
     sa.Column('version', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['auto_description_webhook_id'], ['webhooks.id'], ),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
@@ -407,12 +408,12 @@ def upgrade() -> None:
     op.create_index(op.f('ix_documents_folder_id'), 'documents', ['folder_id'], unique=False)
     op.create_index(op.f('ix_documents_user_id'), 'documents', ['user_id'], unique=False)
     op.create_table('email_inboxes',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('email_address', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('active', sa.Boolean(), nullable=True),
-    sa.Column('webhook_id', app.models.base.GUID(), nullable=True),
+    sa.Column('webhook_id', GUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['webhook_id'], ['webhooks.id'], ),
@@ -437,14 +438,14 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_endpoints_subject_concept_id'), 'endpoints', ['subject_concept_id'], unique=False)
     op.create_table('function_versions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('function_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('function_id', GUID(), nullable=False),
     sa.Column('version', sa.Integer(), nullable=False),
     sa.Column('code', sa.Text(), nullable=False),
     sa.Column('input_schema', sa.JSON(), nullable=False),
     sa.Column('output_schema', sa.JSON(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['function_id'], ['functions.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -469,15 +470,15 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_properties_concept_id'), 'properties', ['concept_id'], unique=False)
     op.create_table('tag_instances',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('tag_definition_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('tag_definition_id', GUID(), nullable=False),
     sa.Column('resource_type', sa.Enum('DOCUMENT', 'EMAIL', name='resourcetype'), nullable=False),
     sa.Column('resource_id', sa.Uuid(), nullable=False),
     sa.Column('key', sa.String(length=100), nullable=False),
     sa.Column('value', sa.String(length=500), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['tag_definition_id'], ['tag_definitions.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -488,13 +489,13 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tag_instances_resource_type'), 'tag_instances', ['resource_type'], unique=False)
     op.create_index(op.f('ix_tag_instances_tag_definition_id'), 'tag_instances', ['tag_definition_id'], unique=False)
     op.create_table('email_inbox_rules',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('inbox_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('inbox_id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('from_pattern', sa.String(length=500), nullable=True),
     sa.Column('subject_pattern', sa.String(length=500), nullable=True),
     sa.Column('body_pattern', sa.String(length=500), nullable=True),
-    sa.Column('webhook_id', app.models.base.GUID(), nullable=True),
+    sa.Column('webhook_id', GUID(), nullable=True),
     sa.Column('priority', sa.Integer(), nullable=True),
     sa.Column('active', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
@@ -579,13 +580,13 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_endpoint_properties_endpoint_id'), 'endpoint_properties', ['endpoint_id'], unique=False)
     op.create_table('executions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('user_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('user_id', GUID(), nullable=False),
     sa.Column('execution_id', sa.String(length=255), nullable=False),
     sa.Column('function_name', sa.String(length=255), nullable=False),
     sa.Column('trigger_type', sa.Enum('WEBHOOK', 'SCHEDULE', name='triggertype'), nullable=False),
     sa.Column('trigger_id', sa.String(length=255), nullable=False),
-    sa.Column('chat_id', app.models.base.GUID(), nullable=True),
+    sa.Column('chat_id', GUID(), nullable=True),
     sa.Column('status', sa.Enum('PENDING', 'RUNNING', 'AWAITING_INPUT', 'COMPLETED', 'FAILED', name='executionstatus'), nullable=False),
     sa.Column('input_data', sa.JSON(), nullable=False),
     sa.Column('output_data', sa.JSON(), nullable=True),
@@ -606,8 +607,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_executions_function_name'), 'executions', ['function_name'], unique=False)
     op.create_index(op.f('ix_executions_user_id'), 'executions', ['user_id'], unique=False)
     op.create_table('messages',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
-    sa.Column('chat_id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
+    sa.Column('chat_id', GUID(), nullable=False),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('content', sa.Text(), nullable=True),
     sa.Column('tool_calls', sa.JSON(), nullable=True),
@@ -640,19 +641,19 @@ def upgrade() -> None:
     op.create_index(op.f('ix_relationships_from_concept_id'), 'relationships', ['from_concept_id'], unique=False)
     op.create_index(op.f('ix_relationships_to_concept_id'), 'relationships', ['to_concept_id'], unique=False)
     op.create_table('tagger_rules',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('scope_type', sa.Enum('FOLDER', 'INBOX', name='scopetype'), nullable=False),
-    sa.Column('folder_id', app.models.base.GUID(), nullable=True),
-    sa.Column('inbox_id', app.models.base.GUID(), nullable=True),
+    sa.Column('folder_id', GUID(), nullable=True),
+    sa.Column('inbox_id', GUID(), nullable=True),
     sa.Column('tag_definition_ids', sa.JSON(), nullable=False),
-    sa.Column('assistant_id', app.models.base.GUID(), nullable=False),
+    sa.Column('assistant_id', GUID(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('auto_trigger', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('created_by', app.models.base.GUID(), nullable=False),
+    sa.Column('created_by', GUID(), nullable=False),
     sa.ForeignKeyConstraint(['assistant_id'], ['assistants.id'], ),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['folder_id'], ['folders.id'], ),
@@ -674,7 +675,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_endpoint_joins_endpoint_id'), 'endpoint_joins', ['endpoint_id'], unique=False)
     op.create_table('step_executions',
-    sa.Column('id', app.models.base.GUID(), nullable=False),
+    sa.Column('id', GUID(), nullable=False),
     sa.Column('execution_id', sa.String(length=255), nullable=False),
     sa.Column('function_name', sa.String(length=255), nullable=False),
     sa.Column('status', sa.Enum('PENDING', 'RUNNING', 'AWAITING_INPUT', 'COMPLETED', 'FAILED', name='executionstatus'), nullable=False),
