@@ -81,7 +81,7 @@ services:
       dockerfile: Dockerfile
     container_name: sinas-app
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${APP_PORT:-51245}:8000"
     volumes:
       # Mount code for development (comment out for production)
       - .:/app
