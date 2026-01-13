@@ -19,18 +19,6 @@ class Settings(BaseSettings):
             return self.database_url
         return f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
 
-    # Redis
-    # Hardcoded for docker-compose, localhost for local development
-    # Override with REDIS_URL env var if needed
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-    # MongoDB
-    # Defaults to localhost for local development
-    # In docker-compose, MONGODB_URL env var will override this
-    mongodb_url: str = os.getenv(
-        "MONGODB_URL", "mongodb://mongodb:password@localhost:27017/sinas?authSource=admin"
-    )
-
     # ClickHouse
     clickhouse_host: str = os.getenv("CLICKHOUSE_HOST", "localhost")
     clickhouse_port: int = int(os.getenv("CLICKHOUSE_PORT", "8123"))  # HTTP port
@@ -42,10 +30,23 @@ class Settings(BaseSettings):
     debug: bool = False
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 10080  # 7 days
+    # JWT Token Configuration (Best Practice)
+    access_token_expire_minutes: int = 15  # Short-lived access tokens
+    refresh_token_expire_days: int = 30  # Long-lived refresh tokens
 
     # OTP Configuration
     otp_expire_minutes: int = 10
+
+    # External Auth (optional - OIDC/OAuth2)
+    external_auth_enabled: bool = False
+    oidc_issuer: Optional[str] = None
+    oidc_audience: Optional[str] = None
+    oidc_groups_claim: str = "groups"
+
+    # Provisioning
+    auto_provision_users: bool = True
+    auto_provision_groups: bool = False
+    default_group_name: str = "Users"
 
     # SMTP Configuration (for sending emails)
     smtp_host: Optional[str] = None
@@ -75,6 +76,10 @@ class Settings(BaseSettings):
 
     # Superadmin
     superadmin_email: Optional[str] = None  # Email for superadmin user
+
+    # Declarative Configuration
+    config_file: Optional[str] = None  # Path to YAML config file
+    auto_apply_config: bool = False  # Auto-apply config file on startup
 
     class Config:
         env_file = ".env"

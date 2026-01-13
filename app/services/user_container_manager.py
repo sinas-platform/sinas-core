@@ -143,7 +143,7 @@ class UserContainerManager:
         return container
 
     async def _sync_functions(self, container: Container, user_id: str, db: AsyncSession):
-        """Load all functions user has access to into container namespace."""
+        """Load all functions user has access to into container namespace, organized by namespace."""
         from app.models.user import GroupMember
 
         # Get user's groups
@@ -161,13 +161,18 @@ class UserContainerManager:
         )
         functions = result.scalars().all()
 
-        # Build functions payload
+        # Build functions payload organized by namespace
+        # Format: {namespace: {function_name: {code, input_schema, output_schema, enabled_namespaces}}}
         functions_data = {}
         for func in functions:
-            functions_data[func.name] = {
+            if func.namespace not in functions_data:
+                functions_data[func.namespace] = {}
+
+            functions_data[func.namespace][func.name] = {
                 'code': func.code,
                 'input_schema': func.input_schema,
                 'output_schema': func.output_schema,
+                'enabled_namespaces': func.enabled_namespaces or [],
             }
 
         # Send functions to container via stdin
@@ -189,14 +194,18 @@ with open("/tmp/functions.json", "w") as f:
 '''],
                 detach=False,
             )
-            logger.info(f"Loaded {len(functions)} functions into container for user {user_id}")
+
+            total_functions = sum(len(funcs) for funcs in functions_data.values())
+            logger.info(f"Loaded {total_functions} functions across {len(functions_data)} namespaces into container for user {user_id}")
         except Exception as e:
             logger.error(f"Error syncing functions to container: {e}")
 
     async def execute_function(
         self,
         user_id: str,
+        function_namespace: str,
         function_name: str,
+        enabled_namespaces: List[str],
         input_data: Dict[str, Any],
         execution_id: str,
         db: AsyncSession,
@@ -213,7 +222,9 @@ with open("/tmp/functions.json", "w") as f:
         payload = {
             'action': 'execute',
             'execution_id': execution_id,
+            'function_namespace': function_namespace,
             'function_name': function_name,
+            'enabled_namespaces': enabled_namespaces,
             'input_data': input_data,
         }
 

@@ -369,74 +369,74 @@ def validate_permission_subset(
 DEFAULT_GROUP_PERMISSIONS = {
     "GuestUsers": {
         "sinas.*:own": False,  # No access by default
-        "sinas.users.read:own": True,
-        "sinas.users.update:own": True,
+        "sinas.users.get:own": True,
+        "sinas.users.put:own": True,
     },
     "Users": {
         # Chats
-        "sinas.chats.create:own": True,
-        "sinas.chats.read:own": True,
-        "sinas.chats.read:group": True,
-        "sinas.chats.update:own": True,
+        "sinas.chats.post:own": True,
+        "sinas.chats.get:own": True,
+        "sinas.chats.get:group": True,
+        "sinas.chats.put:own": True,
         "sinas.chats.delete:own": True,
 
         # Messages
-        "sinas.messages.create:own": True,
-        "sinas.messages.read:own": True,
-        "sinas.messages.read:group": True,
+        "sinas.messages.post:own": True,
+        "sinas.messages.get:own": True,
+        "sinas.messages.get:group": True,
 
-        # Assistants
-        "sinas.assistants.create:own": True,
-        "sinas.assistants.read:own": True,
-        "sinas.assistants.update:own": True,
-        "sinas.assistants.delete:own": True,
+        # Agents (namespace-based)
+        "sinas.agents.*.post:own": True,
+        "sinas.agents.*.get:own": True,
+        "sinas.agents.*.put:own": True,
+        "sinas.agents.*.delete:own": True,
 
-        # Functions
-        "sinas.functions.create:own": True,
-        "sinas.functions.read:own": True,
-        "sinas.functions.update:own": True,
-        "sinas.functions.delete:own": True,
-        "sinas.functions.execute:own": True,
+        # Functions (namespace-based)
+        "sinas.functions.*.post:own": True,
+        "sinas.functions.*.get:own": True,
+        "sinas.functions.*.put:own": True,
+        "sinas.functions.*.delete:own": True,
+        "sinas.functions.*.execute:own": True,
 
         # Webhooks
-        "sinas.webhooks.create:own": True,
-        "sinas.webhooks.read:own": True,
-        "sinas.webhooks.update:own": True,
+        "sinas.webhooks.post:own": True,
+        "sinas.webhooks.get:own": True,
+        "sinas.webhooks.put:own": True,
         "sinas.webhooks.delete:own": True,
 
         # Schedules
-        "sinas.schedules.create:own": True,
-        "sinas.schedules.read:own": True,
-        "sinas.schedules.update:own": True,
+        "sinas.schedules.post:own": True,
+        "sinas.schedules.get:own": True,
+        "sinas.schedules.put:own": True,
         "sinas.schedules.delete:own": True,
 
         # Executions
-        "sinas.executions.read:own": True,
+        "sinas.executions.get:own": True,
 
         # Packages
-        "sinas.packages.install:own": True,
-        "sinas.packages.read:own": True,
+        "sinas.packages.post:own": True,
+        "sinas.packages.get:own": True,
         "sinas.packages.delete:own": True,
 
         # Users
-        "sinas.users.read:own": True,
-        "sinas.users.update:own": True,
+        "sinas.users.get:own": True,
+        "sinas.users.put:own": True,
 
         # API Keys
-        "sinas.apikeys.create:own": True,
-        "sinas.apikeys.read:own": True,
-        "sinas.apikeys.update:own": True,
-        "sinas.apikeys.delete:own": True,
+        "sinas.api_keys.post:own": True,
+        "sinas.api_keys.get:own": True,
+        "sinas.api_keys.delete:own": True,
 
-        # Context Store
-        "sinas.contexts.create:own": True,
-        "sinas.contexts.read:own": True,
-        "sinas.contexts.read:group": True,
-        "sinas.contexts.update:own": True,
-        "sinas.contexts.delete:own": True,
+        # State Store
+        "sinas.states.post:own": True,
+        "sinas.states.get:own": True,
+        "sinas.states.get:group": True,
+        "sinas.states.put:own": True,
+        "sinas.states.delete:own": True,
+        "sinas.states.search:own": True,
 
         # Request Logs
-        "sinas.logs.read:own": True,
+        "sinas.logs.get:own": True,
     },
     "Admins": {
         "sinas.*:all": True,  # Full access to everything

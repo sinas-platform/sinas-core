@@ -194,6 +194,179 @@ class ClickHouseLogger:
             print(f"Failed to query logs from ClickHouse: {e}")
             return []
 
+    async def log_execution_start(
+        self,
+        execution_id: str,
+        function_name: str,
+        input_data: Dict[str, Any]
+    ):
+        """Log execution start event."""
+        if not self.client:
+            return
+
+        try:
+            self.client.insert(
+                "execution_logs",
+                [[
+                    str(uuid.uuid4()),
+                    datetime.utcnow(),
+                    execution_id,
+                    "execution_started",
+                    function_name,
+                    "",  # step_id
+                    json.dumps(input_data) if input_data else "",
+                    "",  # output_data
+                    "",  # error
+                    0,   # duration_ms
+                    ""   # status
+                ]],
+                column_names=[
+                    "log_id", "timestamp", "execution_id", "event",
+                    "function_name", "step_id", "input_data", "output_data",
+                    "error", "duration_ms", "status"
+                ]
+            )
+        except Exception as e:
+            if settings.debug:
+                print(f"Failed to log execution start: {e}")
+
+    async def log_execution_end(
+        self,
+        execution_id: str,
+        status: str,
+        output_data: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None
+    ):
+        """Log execution end event."""
+        if not self.client:
+            return
+
+        try:
+            self.client.insert(
+                "execution_logs",
+                [[
+                    str(uuid.uuid4()),
+                    datetime.utcnow(),
+                    execution_id,
+                    "execution_completed",
+                    "",  # function_name
+                    "",  # step_id
+                    "",  # input_data
+                    json.dumps(output_data) if output_data else "",
+                    error or "",
+                    duration_ms or 0,
+                    status
+                ]],
+                column_names=[
+                    "log_id", "timestamp", "execution_id", "event",
+                    "function_name", "step_id", "input_data", "output_data",
+                    "error", "duration_ms", "status"
+                ]
+            )
+        except Exception as e:
+            if settings.debug:
+                print(f"Failed to log execution end: {e}")
+
+    async def log_function_call(
+        self,
+        execution_id: str,
+        function_name: str,
+        step_id: str,
+        input_data: Dict[str, Any]
+    ):
+        """Log function call within an execution."""
+        if not self.client:
+            return
+
+        try:
+            self.client.insert(
+                "execution_logs",
+                [[
+                    str(uuid.uuid4()),
+                    datetime.utcnow(),
+                    execution_id,
+                    "function_called",
+                    function_name,
+                    step_id,
+                    json.dumps(input_data) if input_data else "",
+                    "",  # output_data
+                    "",  # error
+                    0,   # duration_ms
+                    ""   # status
+                ]],
+                column_names=[
+                    "log_id", "timestamp", "execution_id", "event",
+                    "function_name", "step_id", "input_data", "output_data",
+                    "error", "duration_ms", "status"
+                ]
+            )
+        except Exception as e:
+            if settings.debug:
+                print(f"Failed to log function call: {e}")
+
+    async def log_function_result(
+        self,
+        execution_id: str,
+        function_name: str,
+        step_id: str,
+        output_data: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None
+    ):
+        """Log function result within an execution."""
+        if not self.client:
+            return
+
+        try:
+            self.client.insert(
+                "execution_logs",
+                [[
+                    str(uuid.uuid4()),
+                    datetime.utcnow(),
+                    execution_id,
+                    "function_completed",
+                    function_name,
+                    step_id,
+                    "",  # input_data
+                    json.dumps(output_data) if output_data else "",
+                    error or "",
+                    duration_ms or 0,
+                    ""   # status
+                ]],
+                column_names=[
+                    "log_id", "timestamp", "execution_id", "event",
+                    "function_name", "step_id", "input_data", "output_data",
+                    "error", "duration_ms", "status"
+                ]
+            )
+        except Exception as e:
+            if settings.debug:
+                print(f"Failed to log function result: {e}")
+
+    async def get_execution_logs(
+        self,
+        execution_id: str,
+        limit: int = 1000
+    ) -> list:
+        """Get logs for a specific execution."""
+        if not self.client:
+            return []
+
+        try:
+            query = f"""
+                SELECT *
+                FROM execution_logs
+                WHERE execution_id = '{execution_id}'
+                ORDER BY timestamp ASC
+                LIMIT {limit}
+            """
+            result = self.client.query(query)
+            return result.result_rows
+        except Exception as e:
+            print(f"Failed to get execution logs: {e}")
+            return []
+
     def close(self):
         """Close ClickHouse connection."""
         if self.client:

@@ -8,13 +8,14 @@ import json
 
 
 class FunctionCreate(BaseModel):
+    namespace: str = Field(default="default", min_length=1, max_length=255, pattern=r'^[a-zA-Z_][a-zA-Z0-9_]*$')
     name: str = Field(..., min_length=1, max_length=255, pattern=r'^[a-zA-Z_][a-zA-Z0-9_]*$')
     description: Optional[str] = None
     code: str = Field(..., min_length=1)
     input_schema: Dict[str, Any]
     output_schema: Dict[str, Any]
     requirements: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
+    enabled_namespaces: List[str] = Field(default_factory=list, description="Namespaces this function can call (empty = own namespace only)")
 
     @validator('code')
     def validate_code(cls, v):
@@ -45,7 +46,7 @@ class FunctionUpdate(BaseModel):
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
     requirements: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
+    enabled_namespaces: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
     @validator('code')
@@ -73,13 +74,14 @@ class FunctionUpdate(BaseModel):
 
 class FunctionResponse(BaseModel):
     id: uuid.UUID
+    namespace: str
     name: str
     description: Optional[str]
     code: str
     input_schema: Dict[str, Any]
     output_schema: Dict[str, Any]
     requirements: List[str]
-    tags: List[str]
+    enabled_namespaces: List[str]
     is_active: bool
     created_at: datetime
     updated_at: datetime

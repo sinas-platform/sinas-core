@@ -1,19 +1,4 @@
-version: '3.8'
-
 services:
-  # Redis - always running for logging
-  redis:
-    image: redis:7-alpine
-    container_name: sinas-redis
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   # ClickHouse - for request logging and analytics
   clickhouse:
     image: clickhouse/clickhouse-server:24-alpine
@@ -41,22 +26,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
-  # MongoDB - for document content storage
-  mongodb:
-    image: mongo:7-jammy
-    container_name: sinas-mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-mongodb}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongopassword}
-      MONGO_INITDB_DATABASE: sinas
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # PostgreSQL - always runs, used if DATABASE_URL not set
   postgres:
@@ -107,19 +76,12 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-sinas}
       # DATABASE_PASSWORD comes from .env
 
-      # Redis configuration (hardcoded to docker service)
-      REDIS_URL: redis://redis:6379/0
-
       # ClickHouse configuration
       CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-clickhouse}
       CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-8123}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-sinas}
-
-      # MongoDB configuration
-      # If MONGODB_URL is set, it will be used. Otherwise, use mongodb service
-      MONGODB_URL: ${MONGODB_URL:-mongodb://${MONGO_USERNAME:-mongodb}:${MONGO_PASSWORD:-mongopassword}@mongodb:27017/sinas?authSource=admin}
 
       # Application configuration
       DEBUG: ${DEBUG:-false}
@@ -150,11 +112,7 @@ services:
       # Admin user
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
     depends_on:
-      redis:
-        condition: service_healthy
       clickhouse:
-        condition: service_healthy
-      mongodb:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -181,10 +139,8 @@ services:
       - app
 
 volumes:
-  redis_data:
   postgres_data:
   clickhouse_data:
-  mongodb_data:
   caddy_data:
   caddy_config:
   caddy_logs:

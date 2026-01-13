@@ -10,6 +10,7 @@ class MCPServerCreate(BaseModel):
     url: str
     protocol: str = "http"  # http or websocket
     api_key: Optional[str] = None
+    group_id: Optional[uuid.UUID] = None
 
 
 class MCPServerUpdate(BaseModel):
@@ -17,6 +18,7 @@ class MCPServerUpdate(BaseModel):
     protocol: Optional[str] = None
     api_key: Optional[str] = None
     is_active: Optional[bool] = None
+    group_id: Optional[uuid.UUID] = None
 
 
 class MCPServerResponse(BaseModel):
@@ -25,6 +27,7 @@ class MCPServerResponse(BaseModel):
     url: str
     protocol: str
     is_active: bool
+    group_id: Optional[uuid.UUID]
     last_connected: Optional[datetime]
     connection_status: str
     error_message: Optional[str]

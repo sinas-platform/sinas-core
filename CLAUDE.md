@@ -42,6 +42,33 @@ poetry run mypy .
 poetry run pytest
 ```
 
+### Declarative Configuration
+
+```bash
+# Apply configuration from YAML file
+curl -X POST http://localhost:8000/api/v1/config/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat config/example-simple.yaml)\"}"
+
+# Validate configuration without applying
+curl -X POST http://localhost:8000/api/v1/config/validate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat config/example-simple.yaml)\"}"
+
+# Dry run (preview changes without applying)
+curl -X POST http://localhost:8000/api/v1/config/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat config/example-simple.yaml)\", \"dryRun\": true}"
+
+# Auto-apply config on startup
+# Set in .env:
+# CONFIG_FILE=config/default-data.yaml
+# AUTO_APPLY_CONFIG=true
+```
+
 ### Testing Authentication
 
 ```bash
@@ -59,7 +86,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/...
 SINAS is built around three independent but integrated subsystems:
 
 1. **AI Chat & Assistants** - Multi-provider LLM integration with conversation management
-2. **Ontology System** - Semantic data layer with three data modes (external query, synced, self-managed)
+2. **Ontology System** - Semantic data layer connecting logical concepts to physical database tables
 3. **Function Execution** - Python runtime with webhooks, scheduling, and automatic tracking
 
 ### Permission System
@@ -92,39 +119,32 @@ if check_permission(permissions, perm_group) or check_permission(permissions, pe
 
 ### Ontology System Architecture
 
-The ontology system supports three data modes that can coexist:
+The ontology system connects logical **Concepts** (e.g., Customer, Order) to physical database tables via **TableMappings**.
 
-#### 1. External Query Mode
-- **Purpose:** Query external databases without copying data
-- **Flow:** Request → QueryCompiler → QueryExecutor → External DB → Response
-- **Key Files:**
-  - `app/services/ontology/query_compiler.py` - Compiles endpoint config to SQL
-  - `app/services/ontology/query_executor.py` - Executes against external datasources
-  - `app/services/ontology/query_validator.py` - Validates SQL safety
-- **Tables:** No local data storage, queries run on external datasource
+**Core Components:**
+- **Concept**: Logical entity definition with properties (name, email, etc.)
+- **Property**: Attributes of a concept with data types
+- **TableMapping**: Maps concept to physical table in a DataSource
+  - `table_name`: Physical table/view name
+  - `column_mappings`: JSON mapping property names to column names (empty = exact match)
+  - `user_ownership_column`: Column for row-level :own scope filtering
+  - `group_ownership_column`: Column for row-level :group scope filtering
+- **DataSource**: Database connection (Postgres, Snowflake, BigQuery)
 
-#### 2. Synced Mode
-- **Purpose:** Periodically sync external data to local tables
-- **Flow:** Scheduler → SyncService → External DB → Local Table
-- **Key Files:**
-  - `app/services/ontology/sync_service.py` - Handles periodic data sync
-  - `app/services/scheduler.py` - APScheduler integration for cron jobs
-- **Tables:** `ontology_sync_{namespace}_{concept_name}`
-- **Note:** Uses APScheduler with cron expressions for sync scheduling
+**Data Flow:**
+1. LLM queries concept via `query_ontology_records(concept="Customer", filters={...})`
+2. System loads Concept → TableMapping → DataSource
+3. Applies column mappings to translate property names
+4. Builds SQL query with ownership filters
+5. Executes against external datasource
+6. Returns results
 
-#### 3. Self-Managed Mode
-- **Purpose:** Fully managed data with auto-generated CRUD APIs
-- **Flow:** SchemaManager creates tables → Auto-generated endpoints → Direct DB access
-- **Key Files:**
-  - `app/services/ontology/schema_manager.py` - Dynamic table creation/migration
-  - `app/api/v1/endpoints/ontology_records.py` - Auto-generated CRUD
-- **Tables:** `ontology_{namespace}_{concept_name}`
-- **Schema Changes:**
-  - Add property: `ALTER TABLE ADD COLUMN`
-  - Change type: Old column → `{name}_{timestamp}`, new column created
-  - Delete: Column → `deleted_{name}_{timestamp}`
-
-**Critical Design Note:** A concept can have EITHER a ConceptQuery (modes 1 & 2) OR be self-managed (mode 3), never both.
+**Key Files:**
+- `app/models/ontology.py` - Core models (Concept, Property, TableMapping, DataSource)
+- `app/services/ontology/query_executor.py` - Executes queries against datasources
+- `app/services/ontology/ownership_filter.py` - Applies row-level security
+- `app/api/v1/endpoints/ontology_records.py` - Query endpoints
+- `app/services/ontology_tools.py` - LLM tools for querying ontology data
 
 ### Function Execution System
 
@@ -153,9 +173,8 @@ The ontology system supports three data modes that can coexist:
 **Primary Database (PostgreSQL):**
 - User accounts, groups, permissions
 - Chat history, messages, assistants
-- Ontology metadata (concepts, properties, relationships, endpoints)
+- Ontology metadata (concepts, properties, table mappings, datasources)
 - Function definitions and execution history
-- Self-managed and synced ontology data tables
 
 **Redis:**
 - Execution logs (before persisting to ClickHouse)
@@ -173,7 +192,34 @@ The ontology system supports three data modes that can coexist:
 2. APScheduler started for cron jobs
 3. Default groups created (GuestUsers, Users, Admins)
 4. Superadmin user created if `SUPERADMIN_EMAIL` set and Admins group empty
-5. MCP (Model Context Protocol) client initialized
+5. Declarative config applied if `CONFIG_FILE` and `AUTO_APPLY_CONFIG=true`
+6. MCP (Model Context Protocol) client initialized
+7. Default assistants created
+
+### Declarative Configuration (Preferred)
+
+SINAS supports **declarative configuration** via YAML files for GitOps and Infrastructure as Code workflows.
+
+**Configuration Files:**
+- `config/default-data.yaml` - Full demo configuration (CRM ontology, functions, assistants)
+- `config/example-simple.yaml` - Minimal example for testing
+
+**Auto-Apply on Startup:**
+```bash
+# In .env
+CONFIG_FILE=config/default-data.yaml
+AUTO_APPLY_CONFIG=true
+```
+
+**Features:**
+- ✅ **Idempotent** - Safe to apply multiple times
+- ✅ **Change Detection** - Only updates what changed (hash-based)
+- ✅ **Resource Tracking** - Marks resources as config-managed
+- ✅ **Environment Variables** - Supports `${VAR_NAME}` interpolation
+- ✅ **Dry Run** - Preview changes without applying
+- ✅ **Validation** - Schema and reference validation before apply
+
+**See:** `FEATURES.md` Section 14 for complete documentation
 
 ### Authentication Flow
 

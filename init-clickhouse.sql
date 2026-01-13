@@ -58,3 +58,34 @@ CREATE INDEX IF NOT EXISTS idx_permission ON sinas.request_logs (permission_used
 
 -- Index for path queries
 CREATE INDEX IF NOT EXISTS idx_path ON sinas.request_logs (path) TYPE bloom_filter GRANULARITY 1;
+
+-- Execution logs table for tracking function executions
+CREATE TABLE IF NOT EXISTS sinas.execution_logs
+(
+    -- Primary identifiers
+    log_id UUID DEFAULT generateUUIDv4(),
+    timestamp DateTime64(3) DEFAULT now64(3),
+    execution_id String,
+
+    -- Event tracking
+    event String,  -- execution_started, execution_completed, function_called, function_completed
+    function_name String,
+    step_id String,
+
+    -- Data tracking
+    input_data String,  -- JSON string
+    output_data String,  -- JSON string
+    error String,
+    duration_ms UInt32,
+    status String  -- success, failed, timeout, etc.
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (timestamp, execution_id, event)
+SETTINGS index_granularity = 8192;
+
+-- Index for fast execution lookups
+CREATE INDEX IF NOT EXISTS idx_execution ON sinas.execution_logs (execution_id) TYPE bloom_filter GRANULARITY 1;
+
+-- Index for event type queries
+CREATE INDEX IF NOT EXISTS idx_event ON sinas.execution_logs (event) TYPE bloom_filter GRANULARITY 1;

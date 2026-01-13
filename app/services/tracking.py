@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.execution import StepExecution, ExecutionStatus
-from app.services.redis_logger import redis_logger
+from app.services.clickhouse_logger import clickhouse_logger
 
 
 class ExecutionTracker:
@@ -44,7 +44,7 @@ class ExecutionTracker:
         await self.db.commit()
 
         # Log function call to Redis
-        await redis_logger.log_function_call(
+        await clickhouse_logger.log_function_call(
             self.execution_id, function_name, str(step.id), input_data
         )
 
@@ -72,7 +72,7 @@ class ExecutionTracker:
             await self.db.commit()
 
             # Log function result to Redis
-            await redis_logger.log_function_result(
+            await clickhouse_logger.log_function_result(
                 self.execution_id, function_name, str(step.id),
                 result, None, duration_ms
             )
@@ -92,7 +92,7 @@ class ExecutionTracker:
             await self.db.commit()
 
             # Log function error to Redis
-            await redis_logger.log_function_result(
+            await clickhouse_logger.log_function_result(
                 self.execution_id, function_name, str(step.id),
                 None, str(e), duration_ms
             )

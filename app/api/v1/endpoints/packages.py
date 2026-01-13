@@ -9,6 +9,7 @@ import sys
 
 from app.core.database import get_db
 from app.core.auth import require_permission, get_current_user, get_current_user_with_permissions, set_permission_used
+from app.core.permissions import check_permission
 from app.core.config import settings
 from app.models.package import InstalledPackage
 from app.schemas import PackageInstall, PackageResponse
@@ -87,11 +88,11 @@ async def list_packages(
     user_id, permissions = current_user_data
 
     # Build query based on permissions
-    if permissions.get("sinas.packages.read:all"):
-        set_permission_used(request, "sinas.packages.read:all")
+    if check_permission(permissions,"sinas.packages.get:all"):
+        set_permission_used(request, "sinas.packages.get:all")
         query = select(InstalledPackage)
     else:
-        set_permission_used(request, "sinas.packages.read:own")
+        set_permission_used(request, "sinas.packages.get:own")
         query = select(InstalledPackage).where(InstalledPackage.user_id == uuid.UUID(user_id))
 
     result = await db.execute(query)
@@ -119,7 +120,7 @@ async def uninstall_package(
         raise HTTPException(status_code=404, detail="Package not found")
 
     # Check permissions
-    if permissions.get("sinas.packages.delete:all"):
+    if check_permission(permissions,"sinas.packages.delete:all"):
         set_permission_used(request, "sinas.packages.delete:all")
     else:
         if str(package.user_id) != user_id:

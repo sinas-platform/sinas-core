@@ -8,7 +8,7 @@ import uuid
 import inspect
 import dill
 from datetime import datetime
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import jsonschema
@@ -17,7 +17,7 @@ from app.models.function import Function
 from app.models.execution import Execution, StepExecution, ExecutionStatus
 from app.core.database import AsyncSessionLocal
 from app.services.tracking import ExecutionTracker
-from app.services.redis_logger import redis_logger
+from app.services.clickhouse_logger import clickhouse_logger
 
 
 class FunctionExecutionError(Exception):
@@ -121,15 +121,16 @@ class FunctionExecutor:
         except jsonschema.ValidationError as e:
             raise SchemaValidationError(f"Schema validation failed: {e.message}")
 
-    async def load_function(self, db: AsyncSession, function_name: str, user_id: str) -> Function:
+    async def load_function(self, db: AsyncSession, function_namespace: str, function_name: str, user_id: str) -> Function:
         """Load function from database with caching."""
-        cache_key = f"{user_id}:{function_name}"
+        cache_key = f"{user_id}:{function_namespace}:{function_name}"
         if cache_key in self.functions_cache:
             return self.functions_cache[cache_key]
 
         result = await db.execute(
             select(Function).where(
                 Function.user_id == user_id,
+                Function.namespace == function_namespace,
                 Function.name == function_name,
                 Function.is_active == True
             )
@@ -137,19 +138,29 @@ class FunctionExecutor:
         function = result.scalar_one_or_none()
 
         if not function:
-            raise FunctionExecutionError(f"Function '{function_name}' not found or inactive")
+            raise FunctionExecutionError(f"Function '{function_namespace}/{function_name}' not found or inactive")
 
         self.functions_cache[cache_key] = function
         return function
 
-    async def build_execution_namespace(self, db: AsyncSession, execution_id: str, user_id: str) -> Dict[str, Any]:
-        """Build namespace with all functions user has access to (via groups) and tracking decorator."""
+    async def build_execution_namespace(
+        self,
+        db: AsyncSession,
+        execution_id: str,
+        user_id: str,
+        function_namespace: str,
+        enabled_namespaces: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Build namespace with functions from enabled namespaces + own namespace.
+        Functions are organized as nested namespace objects (e.g., payments.charge()).
+        """
         cache_key = f"{user_id}:{execution_id}"
         if cache_key in self.namespace_cache:
             return self.namespace_cache[cache_key]
 
-        # Load all functions the user has access to through their groups
         from app.models.user import GroupMember
+        from types import SimpleNamespace
 
         # Get user's groups
         groups_result = await db.execute(
@@ -157,10 +168,15 @@ class FunctionExecutor:
         )
         group_ids = [row[0] for row in groups_result.all()]
 
-        # Load functions from user's groups + user's own functions
+        # Determine which namespaces to load
+        # Always include own namespace, plus enabled_namespaces
+        allowed_namespaces = [function_namespace] + (enabled_namespaces or [])
+
+        # Load functions from allowed namespaces that user has access to
         result = await db.execute(
             select(Function).where(
                 Function.is_active == True,
+                Function.namespace.in_(allowed_namespaces),
                 (Function.user_id == user_id) | (Function.group_id.in_(group_ids))
             )
         )
@@ -180,25 +196,49 @@ class FunctionExecutor:
             "uuid": uuid,
         }
 
-        # Compile and add all functions to namespace
+        # Group functions by namespace
+        namespace_objects = {}
         for func in functions:
             try:
                 # Inject tracking decorator
                 modified_code = ASTInjector.inject_tracking_decorator(func.code)
 
-                # Compile and execute in namespace
-                compiled_code = compile(modified_code, f"<function:{func.name}>", "exec")
-                exec(compiled_code, namespace)
+                # Compile in temporary namespace
+                temp_ns = {
+                    "__builtins__": __builtins__,
+                    "track": track_decorator,
+                    "json": json,
+                    "datetime": datetime,
+                    "uuid": uuid,
+                }
+                compiled_code = compile(modified_code, f"<function:{func.namespace}/{func.name}>", "exec")
+                exec(compiled_code, temp_ns)
+
+                # Create namespace object if not exists
+                if func.namespace not in namespace_objects:
+                    namespace_objects[func.namespace] = SimpleNamespace()
+
+                # Attach function to namespace object
+                # The function is whatever was defined in the code (usually matches func.name)
+                # Find the actual function object (skip builtins and our injected vars)
+                for key, value in temp_ns.items():
+                    if key not in ["__builtins__", "track", "json", "datetime", "uuid"] and callable(value):
+                        setattr(namespace_objects[func.namespace], func.name, value)
+                        break
 
             except Exception as e:
-                print(f"Error loading function {func.name}: {e}")
+                print(f"Error loading function {func.namespace}/{func.name}: {e}")
                 continue
+
+        # Add namespace objects to main namespace
+        namespace.update(namespace_objects)
 
         self.namespace_cache[cache_key] = namespace
         return namespace
 
     async def execute_function(
         self,
+        function_namespace: str,
         function_name: str,
         input_data: Dict[str, Any],
         execution_id: str,
@@ -233,7 +273,7 @@ class FunctionExecutor:
                 await db.commit()
 
                 # Log execution start to Redis
-                await redis_logger.log_execution_start(
+                await clickhouse_logger.log_execution_start(
                     execution_id, function_name, input_data
                 )
             elif resume_data is not None:
@@ -246,7 +286,7 @@ class FunctionExecutor:
 
             try:
                 # Load function definition
-                function = await self.load_function(db, function_name, user_id)
+                function = await self.load_function(db, function_namespace, function_name, user_id)
 
                 # Validate input (only for new executions)
                 if not resume_data and function.input_schema:
@@ -258,7 +298,9 @@ class FunctionExecutor:
                 # Execute in user's Docker container
                 exec_result = await self.container_manager.execute_function(
                     user_id=user_id,
+                    function_namespace=function_namespace,
                     function_name=function_name,
+                    enabled_namespaces=function.enabled_namespaces or [],
                     input_data=input_data,
                     execution_id=execution_id,
                     db=db,
@@ -283,7 +325,7 @@ class FunctionExecutor:
                 await db.commit()
 
                 # Log execution completion to Redis
-                await redis_logger.log_execution_end(
+                await clickhouse_logger.log_execution_end(
                     execution_id, "completed", result, None, duration_ms
                 )
 
@@ -299,7 +341,7 @@ class FunctionExecutor:
                 await db.commit()
 
                 # Log execution failure to Redis
-                await redis_logger.log_execution_end(
+                await clickhouse_logger.log_execution_end(
                     execution_id, "failed", None, str(e), None
                 )
 
@@ -335,7 +377,7 @@ class FunctionExecutor:
 
                 await db.commit()
 
-                await redis_logger.log_execution_end(
+                await clickhouse_logger.log_execution_end(
                     execution.execution_id, "completed", result, None, None
                 )
 
@@ -355,7 +397,7 @@ class FunctionExecutor:
 
                 await db.commit()
 
-                await redis_logger.log_execution_end(
+                await clickhouse_logger.log_execution_end(
                     execution.execution_id, "completed", result, None, None
                 )
 

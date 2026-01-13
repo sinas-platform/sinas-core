@@ -21,7 +21,7 @@ router = APIRouter()
 @router.post("", response_model=LLMProviderResponse, status_code=status.HTTP_201_CREATED)
 async def create_llm_provider(
     request: LLMProviderCreate,
-    user_id: str = Depends(require_permission("sinas.llm_providers.create:all")),
+    user_id: str = Depends(require_permission("sinas.llm_providers.post:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new LLM provider configuration. Admin only."""
@@ -68,7 +68,7 @@ async def create_llm_provider(
 
 @router.get("", response_model=List[LLMProviderResponse])
 async def list_llm_providers(
-    user_id: str = Depends(require_permission("sinas.llm_providers.read:all")),
+    user_id: str = Depends(require_permission("sinas.llm_providers.get:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """List all LLM providers. Admin only."""
@@ -79,54 +79,48 @@ async def list_llm_providers(
     return [LLMProviderResponse.model_validate(p) for p in providers]
 
 
-@router.get("/{provider_id}", response_model=LLMProviderResponse)
+@router.get("/{name}", response_model=LLMProviderResponse)
 async def get_llm_provider(
-    provider_id: uuid.UUID,
-    user_id: str = Depends(require_permission("sinas.llm_providers.read:all")),
+    name: str,
+    user_id: str = Depends(require_permission("sinas.llm_providers.get:all")),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a specific LLM provider by ID. Admin only."""
-    result = await db.execute(
-        select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
-    )
-    provider = result.scalar_one_or_none()
+    """Get a specific LLM provider by name. Admin only."""
+    provider = await LLMProvider.get_by_name(db, name)
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Provider not found"
+            detail=f"Provider '{name}' not found"
         )
     return LLMProviderResponse.model_validate(provider)
 
 
-@router.patch("/{provider_id}", response_model=LLMProviderResponse)
+@router.patch("/{name}", response_model=LLMProviderResponse)
 async def update_llm_provider(
-    provider_id: uuid.UUID,
+    name: str,
     request: LLMProviderUpdate,
-    user_id: str = Depends(require_permission("sinas.llm_providers.update:all")),
+    user_id: str = Depends(require_permission("sinas.llm_providers.put:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Update an LLM provider. Admin only."""
-    result = await db.execute(
-        select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
-    )
-    provider = result.scalar_one_or_none()
+    provider = await LLMProvider.get_by_name(db, name)
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Provider not found"
+            detail=f"Provider '{name}' not found"
         )
 
     # If setting as default, unset other defaults
     if request.is_default:
         await db.execute(
-            LLMProvider.__table__.update().where(LLMProvider.id != provider_id).values(is_default=False)
+            LLMProvider.__table__.update().where(LLMProvider.id != provider.id).values(is_default=False)
         )
 
     # Update fields
     if request.name is not None:
         # Check name uniqueness
         name_check = await db.execute(
-            select(LLMProvider).where(LLMProvider.name == request.name, LLMProvider.id != provider_id)
+            select(LLMProvider).where(LLMProvider.name == request.name, LLMProvider.id != provider.id)
         )
         if name_check.scalar_one_or_none():
             raise HTTPException(
@@ -163,21 +157,18 @@ async def update_llm_provider(
     return LLMProviderResponse.model_validate(provider)
 
 
-@router.delete("/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_llm_provider(
-    provider_id: uuid.UUID,
+    name: str,
     user_id: str = Depends(require_permission("sinas.llm_providers.delete:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Soft delete an LLM provider. Admin only."""
-    result = await db.execute(
-        select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
-    )
-    provider = result.scalar_one_or_none()
+    provider = await LLMProvider.get_by_name(db, name)
     if not provider:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Provider not found"
+            detail=f"Provider '{name}' not found"
         )
 
     provider.is_active = False

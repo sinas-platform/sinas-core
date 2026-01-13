@@ -21,7 +21,7 @@ router = APIRouter()
 @router.post("/servers", response_model=MCPServerResponse, status_code=status.HTTP_201_CREATED)
 async def create_mcp_server(
     request: MCPServerCreate,
-    user_id: str = Depends(require_permission("sinas.mcp.create:all")),
+    user_id: str = Depends(require_permission("sinas.mcp.post:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -47,6 +47,7 @@ async def create_mcp_server(
         url=request.url,
         protocol=request.protocol,
         api_key=request.api_key,
+        group_id=request.group_id,
         is_active=True,
         connection_status="disconnected"
     )
@@ -70,7 +71,7 @@ async def create_mcp_server(
 
 @router.get("/servers", response_model=List[MCPServerResponse])
 async def list_mcp_servers(
-    user_id: str = Depends(require_permission("sinas.mcp.read:all")),
+    user_id: str = Depends(require_permission("sinas.mcp.get:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """List all MCP servers."""
@@ -82,44 +83,38 @@ async def list_mcp_servers(
     return [MCPServerResponse.model_validate(server) for server in servers]
 
 
-@router.get("/servers/{server_id}", response_model=MCPServerResponse)
+@router.get("/servers/{name}", response_model=MCPServerResponse)
 async def get_mcp_server(
-    server_id: str,
-    user_id: str = Depends(require_permission("sinas.mcp.read:all")),
+    name: str,
+    user_id: str = Depends(require_permission("sinas.mcp.get:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Get an MCP server."""
-    result = await db.execute(
-        select(MCPServer).where(MCPServer.id == server_id)
-    )
-    server = result.scalar_one_or_none()
+    server = await MCPServer.get_by_name(db, name)
 
     if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="MCP server not found"
+            detail=f"MCP server '{name}' not found"
         )
 
     return MCPServerResponse.model_validate(server)
 
 
-@router.put("/servers/{server_id}", response_model=MCPServerResponse)
+@router.put("/servers/{name}", response_model=MCPServerResponse)
 async def update_mcp_server(
-    server_id: str,
+    name: str,
     request: MCPServerUpdate,
-    user_id: str = Depends(require_permission("sinas.mcp.update:all")),
+    user_id: str = Depends(require_permission("sinas.mcp.put:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Update an MCP server."""
-    result = await db.execute(
-        select(MCPServer).where(MCPServer.id == server_id)
-    )
-    server = result.scalar_one_or_none()
+    server = await MCPServer.get_by_name(db, name)
 
     if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="MCP server not found"
+            detail=f"MCP server '{name}' not found"
         )
 
     # Update fields
@@ -131,6 +126,8 @@ async def update_mcp_server(
         server.api_key = request.api_key
     if request.is_active is not None:
         server.is_active = request.is_active
+    if request.group_id is not None:
+        server.group_id = request.group_id
 
     await db.commit()
 
@@ -149,22 +146,19 @@ async def update_mcp_server(
     return MCPServerResponse.model_validate(server)
 
 
-@router.delete("/servers/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/servers/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_mcp_server(
-    server_id: str,
+    name: str,
     user_id: str = Depends(require_permission("sinas.mcp.delete:all")),
     db: AsyncSession = Depends(get_db)
 ):
     """Disconnect and delete an MCP server."""
-    result = await db.execute(
-        select(MCPServer).where(MCPServer.id == server_id)
-    )
-    server = result.scalar_one_or_none()
+    server = await MCPServer.get_by_name(db, name)
 
     if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="MCP server not found"
+            detail=f"MCP server '{name}' not found"
         )
 
     # Disconnect
@@ -179,7 +173,7 @@ async def delete_mcp_server(
 
 @router.get("/tools", response_model=List[dict])
 async def list_mcp_tools(
-    user_id: str = Depends(require_permission("sinas.mcp.read:all"))
+    user_id: str = Depends(require_permission("sinas.mcp.get:all"))
 ):
     """List all available MCP tools."""
     tools = await mcp_client.get_available_tools()

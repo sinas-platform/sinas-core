@@ -12,17 +12,24 @@ class Chat(Base):
     id: Mapped[uuid_pk]
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     group_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("groups.id"), index=True)
-    assistant_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("assistants.id"))
+
+    # Agent reference (FK can be null if agent deleted, namespace/name preserved for audit trail)
+    agent_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("agents.id"), index=True)
+    agent_namespace: Mapped[Optional[str]] = mapped_column(String(255))
+    agent_name: Mapped[Optional[str]] = mapped_column(String(255))
+
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    enabled_webhooks: Mapped[List[str]] = mapped_column(JSON, default=list)
-    enabled_mcp_tools: Mapped[List[str]] = mapped_column(JSON, default=list)
-    enabled_assistants: Mapped[List[str]] = mapped_column(JSON, default=list)  # List of assistant IDs
+
+    # Chat metadata for creation context (agent input, resolved function params, etc.)
+    chat_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=None)
+    # Example: {"agent_input": {"my_city": "London"}, "resolved_function_params": {"check_weather": {"city": "London"}}}
+
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="chats")
-    assistant: Mapped[Optional["Assistant"]] = relationship("Assistant", back_populates="chats")
+    agent: Mapped[Optional["Agent"]] = relationship("Agent", back_populates="chats")
     messages: Mapped[List["Message"]] = relationship(
         "Message", back_populates="chat", cascade="all, delete-orphan", order_by="Message.created_at"
     )
@@ -38,8 +45,8 @@ class Message(Base):
     tool_calls: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON)
     tool_call_id: Mapped[Optional[str]] = mapped_column(String(255))
     name: Mapped[Optional[str]] = mapped_column(String(255))  # For tool response messages
-    enabled_webhooks: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    enabled_mcp_tools: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    enabled_functions: Mapped[Optional[List[str]]] = mapped_column(JSON)  # Per-message function overrides
+    enabled_mcp_tools: Mapped[Optional[List[str]]] = mapped_column(JSON)  # Per-message MCP tool overrides
     created_at: Mapped[created_at]
 
     # Relationships

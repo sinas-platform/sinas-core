@@ -148,7 +148,7 @@ async def get_or_create_user(
         return user
 
     # Create new user
-    user = User(email=normalized_email, is_active=True)
+    user = User(email=normalized_email)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -210,46 +210,174 @@ async def get_user_permissions(db: AsyncSession, user_id: str) -> Dict[str, bool
             # Later groups can override earlier ones
             all_permissions[perm.permission_key] = perm.permission_value
 
-    # Expand wildcards to concrete permissions
-    expanded = expand_permission_dict(all_permissions)
-
-    return expanded
+    # Return permissions as-is (with wildcards) - they will be matched at runtime
+    return all_permissions
 
 
 def create_access_token(
     user_id: str,
     email: str,
-    permissions: Dict[str, bool],
     expires_delta: Optional[timedelta] = None
 ) -> str:
     """
-    Create JWT access token with user info and permissions.
+    Create JWT access token (short-lived, no permissions in payload).
+
+    Best Practice: Permissions are fetched from DB on each request,
+    not embedded in token. This ensures immediate permission updates.
 
     Args:
         user_id: User UUID
         email: User email
-        permissions: Dict of all user permissions
         expires_delta: Optional custom expiration
 
     Returns:
         Encoded JWT token
     """
+    now = datetime.now(timezone.utc)
+
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(minutes=settings.access_token_expire_minutes)
+
     to_encode = {
         "sub": str(user_id),
         "email": email,
-        "permissions": permissions
+        "iat": int(now.timestamp()),  # Issued at (best practice)
+        "exp": int(expire.timestamp())
     }
 
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.access_token_expire_minutes
-        )
-
-    to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
+
+
+async def create_refresh_token(
+    db: AsyncSession,
+    user_id: str
+) -> Tuple[str, "RefreshToken"]:
+    """
+    Create a refresh token and store it in the database.
+
+    Refresh tokens are long-lived and stored in DB for revocation control.
+
+    Args:
+        db: Database session
+        user_id: User UUID
+
+    Returns:
+        Tuple of (plain_token, refresh_token_model)
+    """
+    from app.models import RefreshToken
+    import uuid as uuid_lib
+
+    # Generate random token
+    plain_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(plain_token.encode()).hexdigest()
+    token_prefix = plain_token[:8]
+
+    # Calculate expiration
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+
+    # Create refresh token record
+    refresh_token = RefreshToken(
+        user_id=uuid_lib.UUID(user_id),
+        token_hash=token_hash,
+        token_prefix=token_prefix,
+        is_revoked=False,
+        expires_at=expires_at
+    )
+
+    db.add(refresh_token)
+    await db.commit()
+    await db.refresh(refresh_token)
+
+    return plain_token, refresh_token
+
+
+async def validate_refresh_token(
+    db: AsyncSession,
+    plain_token: str
+) -> Optional[Tuple[str, str]]:
+    """
+    Validate a refresh token and return user info.
+
+    Args:
+        db: Database session
+        plain_token: Plain refresh token from request
+
+    Returns:
+        Tuple of (user_id, email) if valid, None otherwise
+    """
+    from app.models import RefreshToken
+
+    token_hash = hashlib.sha256(plain_token.encode()).hexdigest()
+
+    # Find active refresh token
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash,
+            RefreshToken.is_revoked == False
+        )
+    )
+    refresh_token = result.scalar_one_or_none()
+
+    if not refresh_token:
+        return None
+
+    # Check if expired
+    if refresh_token.expires_at < datetime.now(timezone.utc):
+        return None
+
+    # Update last used timestamp
+    refresh_token.last_used_at = datetime.now(timezone.utc)
+
+    # Get user and update last_login
+    result = await db.execute(
+        select(User).where(User.id == refresh_token.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return None
+
+    # Update last login timestamp
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return str(user.id), user.email
+
+
+async def revoke_refresh_token(
+    db: AsyncSession,
+    plain_token: str
+) -> bool:
+    """
+    Revoke a refresh token (logout).
+
+    Args:
+        db: Database session
+        plain_token: Plain refresh token to revoke
+
+    Returns:
+        True if revoked, False if not found
+    """
+    from app.models import RefreshToken
+
+    token_hash = hashlib.sha256(plain_token.encode()).hexdigest()
+
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    refresh_token = result.scalar_one_or_none()
+
+    if not refresh_token:
+        return False
+
+    refresh_token.is_revoked = True
+    refresh_token.revoked_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return True
 
 
 # API Key Management
@@ -362,16 +490,19 @@ async def validate_api_key(db: AsyncSession, key: str) -> Optional[Tuple[User, D
 
     # Update last used timestamp
     api_key.last_used_at = datetime.now(timezone.utc)
-    await db.commit()
 
-    # Get user
+    # Get user and update last_login
     result = await db.execute(
         select(User).where(User.id == api_key.user_id)
     )
     user = result.scalar_one_or_none()
 
-    if not user or not user.is_active:
+    if not user:
         return None
+
+    # Update last login timestamp
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
 
     return user, api_key.permissions
 
@@ -383,11 +514,14 @@ async def verify_jwt_or_api_key(
     db: AsyncSession = Depends(get_db)
 ) -> Tuple[str, str, Dict[str, bool]]:
     """
-    Verify either JWT token or API key from Authorization header.
+    Verify either JWT access token or API key from Authorization header.
+
+    BEST PRACTICE: Permissions are loaded from DB, not from JWT payload.
+    This ensures immediate permission updates without waiting for token expiry.
 
     Supports:
-    - Bearer <jwt_token>
-    - Bearer <api_key>
+    - Bearer <jwt_access_token> (15 min)
+    - Bearer <api_key> (long-lived)
 
     Returns:
         Tuple of (user_id, email, permissions)
@@ -414,13 +548,30 @@ async def verify_jwt_or_api_key(
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         user_id = payload.get("sub")
         email = payload.get("email")
-        permissions = payload.get("permissions", {})
 
         if not user_id or not email:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token payload"
             )
+
+        # BEST PRACTICE: Load permissions from database, not from JWT
+        # This ensures permissions are always current (no stale token permissions)
+        permissions = await get_user_permissions(db, str(user_id))
+
+        # Verify user exists and update last_login
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+
+        # Update last login timestamp
+        user.last_login_at = datetime.now(timezone.utc)
+        await db.commit()
 
         return str(user_id), email, permissions
 
@@ -496,6 +647,33 @@ async def get_current_user(
     request.state.user_email = email
 
     return user_id
+
+
+async def get_current_user_optional(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+) -> Optional[str]:
+    """
+    Get current authenticated user ID if auth header provided, otherwise return None.
+    Used for optional authentication on runtime endpoints.
+
+    Returns:
+        user_id or None
+    """
+    if not authorization:
+        return None
+
+    try:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            user_id, email, _ = await verify_jwt_or_api_key(authorization, db)
+            # Store user info in request state for logging
+            request.state.user_id = user_id
+            request.state.user_email = email
+            return user_id
+    except Exception:
+        # Return None on auth failure for optional auth
+        return None
 
 
 async def get_current_user_with_permissions(

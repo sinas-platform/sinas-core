@@ -82,7 +82,7 @@ class FunctionScheduler:
             self.scheduler.add_job(
                 func=self._execute_scheduled_function,
                 trigger='cron',
-                args=[str(job.id), job.function_name, job.input_data, str(job.user_id)],
+                args=[str(job.id), job.function_namespace, job.function_name, job.input_data, str(job.user_id)],
                 id=str(job.id),
                 name=job.name,
                 timezone=job.timezone,
@@ -112,6 +112,7 @@ class FunctionScheduler:
     async def _execute_scheduled_function(
         self,
         job_id: str,
+        function_namespace: str,
         function_name: str,
         input_data: Dict[str, Any],
         user_id: str
@@ -120,13 +121,14 @@ class FunctionScheduler:
         execution_id = str(uuid.uuid4())
 
         try:
-            logger.info(f"Executing scheduled function: {function_name} (job: {job_id})")
+            logger.info(f"Executing scheduled function: {function_namespace}/{function_name} (job: {job_id})")
 
             # Update last_run time in database
             await self._update_job_last_run(job_id)
 
             # Execute the function
             result = await executor.execute_function(
+                function_namespace=function_namespace,
                 function_name=function_name,
                 input_data=input_data,
                 execution_id=execution_id,
@@ -135,10 +137,10 @@ class FunctionScheduler:
                 user_id=user_id
             )
 
-            logger.info(f"Scheduled function {function_name} completed successfully: {result}")
+            logger.info(f"Scheduled function {function_namespace}/{function_name} completed successfully: {result}")
 
         except Exception as e:
-            logger.error(f"Scheduled function {function_name} failed: {e}")
+            logger.error(f"Scheduled function {function_namespace}/{function_name} failed: {e}")
     
     async def _update_job_last_run(self, job_id: str):
         """Update the last_run and next_run timestamps for a scheduled job."""

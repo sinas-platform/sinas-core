@@ -1,32 +1,28 @@
 """Chat and message schemas."""
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 import uuid
 
 
 class ChatCreate(BaseModel):
     title: str
-    assistant_id: Optional[uuid.UUID] = None
+    agent_id: Optional[uuid.UUID] = None
     group_id: Optional[uuid.UUID] = None
-    enabled_webhooks: Optional[List[str]] = None
-    enabled_mcp_tools: Optional[List[str]] = None
 
 
 class ChatUpdate(BaseModel):
     title: Optional[str] = None
-    enabled_webhooks: Optional[List[str]] = None
-    enabled_mcp_tools: Optional[List[str]] = None
 
 
 class ChatResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     group_id: Optional[uuid.UUID]
-    assistant_id: Optional[uuid.UUID]
+    agent_id: Optional[uuid.UUID]
+    agent_namespace: Optional[str]
+    agent_name: Optional[str]
     title: str
-    enabled_webhooks: List[str]
-    enabled_mcp_tools: List[str]
     created_at: datetime
     updated_at: datetime
 
@@ -48,19 +44,36 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class AgentChatCreateRequest(BaseModel):
+    """Create chat with agent using system prompt templating."""
+
+    # System prompt templating (validated against agent.input_schema)
+    input: Optional[Dict[str, Any]] = None
+
+    # Optional title for the chat
+    title: Optional[str] = None
+
+
 class MessageSendRequest(BaseModel):
-    content: str
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    temperature: float = 0.7
-    max_tokens: Optional[int] = None
-    enabled_webhooks: Optional[List[str]] = None
-    disabled_webhooks: Optional[List[str]] = None
-    enabled_mcp_tools: Optional[List[str]] = None
-    disabled_mcp_tools: Optional[List[str]] = None
-    inject_context: bool = True  # Auto-inject relevant context into prompts
-    context_namespaces: Optional[List[str]] = None  # Filter which namespaces to inject
-    context_limit: int = 5  # Max number of context entries to inject
+    """
+    Send message to existing chat.
+
+    All agent behavior (LLM, tools, context) is defined by the agent.
+    This request only contains the message content.
+
+    Supports multimodal content: text, images, audio, and files.
+    Universal format - automatically converted to provider-specific format.
+    """
+
+    content: Union[str, List[Dict[str, Any]]]
+    # String: "Hello world"
+    # Multimodal:
+    # [
+    #   {"type": "text", "text": "..."},
+    #   {"type": "image", "image": "https://... or data:image/png;base64,..."},
+    #   {"type": "audio", "data": "base64...", "format": "wav"},
+    #   {"type": "file", "file_data": "base64...", "filename": "doc.pdf"}
+    # ]
 
 
 class ChatWithMessages(ChatResponse):

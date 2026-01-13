@@ -1,357 +1,167 @@
 # SINAS Permission Definitions
-# Format: service.resource.action:scope
-# Scopes: own (user's own resources), group (user's group resources), all (all resources)
+# Format: sinas.{resource}.{action}:{scope}
+#
+# Actions:
+#   - Standard CRUD: get, post, put, patch, delete (maps to HTTP verbs)
+#   - Custom actions: execute, search, manage_members, etc. (semantic names)
+#
+# Scopes: own, group, all
+#   - own: user's own resources
+#   - group: user's group resources
+#   - all: all resources (typically admin)
+#
+# Wildcards:
+#   - sinas.*:all (admin - all permissions)
+#   - sinas.*.get:all (read-only admin)
+#   - sinas.agents.*:own (all operations on own agents)
 
 # Chats - AI Conversation Management
-sinas.chats.create:own
-sinas.chats.read:own
-sinas.chats.read:group
-sinas.chats.read:all
-sinas.chats.update:own
-sinas.chats.update:all
+sinas.chats.post:own
+sinas.chats.get:own
+sinas.chats.get:group
+sinas.chats.get:all
+sinas.chats.put:own
+sinas.chats.put:all
 sinas.chats.delete:own
 sinas.chats.delete:all
 
 # Messages - Chat Messages
-sinas.messages.create:own
-sinas.messages.read:own
-sinas.messages.read:group
-sinas.messages.read:all
+sinas.messages.post:own
+sinas.messages.get:own
+sinas.messages.get:group
+sinas.messages.get:all
 
-# Assistants - AI Assistant Management
-sinas.assistants.create:own
-sinas.assistants.read:own
-sinas.assistants.read:all
-sinas.assistants.update:own
-sinas.assistants.update:all
-sinas.assistants.delete:own
-sinas.assistants.delete:all
+# Agents - AI Agent Management
+# Format: sinas.agents.{namespace}.{action}:{scope}
+# Examples:
+#   sinas.agents.default.post:own (create agent in default namespace)
+#   sinas.agents.support.get:group (view support namespace agents)
+#   sinas.agents.*.post:own (create agent in any namespace you own)
+sinas.agents.*.post:own
+sinas.agents.*.post:group
+sinas.agents.*.post:all
+sinas.agents.*.get:own
+sinas.agents.*.get:group
+sinas.agents.*.get:all
+sinas.agents.*.put:own
+sinas.agents.*.put:group
+sinas.agents.*.put:all
+sinas.agents.*.delete:own
+sinas.agents.*.delete:group
+sinas.agents.*.delete:all
 
 # Functions - Python Function Management
-sinas.functions.create:own
-sinas.functions.read:own
-sinas.functions.read:all
-sinas.functions.update:own
-sinas.functions.update:all
-sinas.functions.delete:own
-sinas.functions.delete:all
-sinas.functions.execute:own
-sinas.functions.execute:all
+# Format: sinas.functions.{namespace}.{action}:{scope}
+# Examples:
+#   sinas.functions.default.post:own (create function in default namespace)
+#   sinas.functions.analytics.execute:group (execute analytics namespace functions)
+#   sinas.functions.*.post:own (create function in any namespace you own)
+sinas.functions.*.post:own
+sinas.functions.*.post:group
+sinas.functions.*.post:all
+sinas.functions.*.get:own
+sinas.functions.*.get:group
+sinas.functions.*.get:all
+sinas.functions.*.put:own
+sinas.functions.*.put:group
+sinas.functions.*.put:all
+sinas.functions.*.delete:own
+sinas.functions.*.delete:group
+sinas.functions.*.delete:all
+sinas.functions.*.execute:own
+sinas.functions.*.execute:group
+sinas.functions.*.execute:all
 
 # Webhooks - Webhook Endpoint Management
-sinas.webhooks.create:own
-sinas.webhooks.read:own
-sinas.webhooks.read:all
-sinas.webhooks.update:own
-sinas.webhooks.update:all
+sinas.webhooks.post:own
+sinas.webhooks.get:own
+sinas.webhooks.get:all
+sinas.webhooks.put:own
+sinas.webhooks.put:all
 sinas.webhooks.delete:own
 sinas.webhooks.delete:all
 
 # Schedules - Scheduled Job Management
-sinas.schedules.create:own
-sinas.schedules.read:own
-sinas.schedules.read:all
-sinas.schedules.update:own
-sinas.schedules.update:all
+sinas.schedules.post:own
+sinas.schedules.get:own
+sinas.schedules.get:all
+sinas.schedules.put:own
+sinas.schedules.put:all
 sinas.schedules.delete:own
 sinas.schedules.delete:all
 
 # Executions - Execution History and Monitoring
-sinas.executions.read:own
-sinas.executions.read:all
+sinas.executions.get:own
+sinas.executions.get:all
 
 # Packages - Python Package Management
-sinas.packages.install:own
-sinas.packages.read:own
-sinas.packages.read:all
+sinas.packages.post:own
+sinas.packages.get:own
+sinas.packages.get:all
 sinas.packages.delete:own
 sinas.packages.delete:all
 
 # MCP Servers - Model Context Protocol Integration
-sinas.mcp.create:all
-sinas.mcp.read:all
-sinas.mcp.update:all
+sinas.mcp.post:all
+sinas.mcp.get:all
+sinas.mcp.put:all
 sinas.mcp.delete:all
-sinas.mcp.execute:all
 
 # LLM Providers - LLM Provider Configuration
-sinas.llm_providers.create:all
-sinas.llm_providers.read:all
-sinas.llm_providers.update:all
+sinas.llm_providers.post:all
+sinas.llm_providers.get:all
+sinas.llm_providers.put:all
 sinas.llm_providers.delete:all
 
 # Containers - User Container Management
-sinas.containers.read:all
-sinas.containers.update:all
+sinas.containers.get:all
 sinas.containers.delete:all
 
 # Users - User Management
-sinas.users.read:own
-sinas.users.update:own
-sinas.users.read:all
-sinas.users.update:all
+sinas.users.post:all
+sinas.users.get:own
+sinas.users.put:own
+sinas.users.get:all
+sinas.users.put:all
 sinas.users.delete:all
 
 # API Keys - API Key Management
-sinas.apikeys.create:own
-sinas.apikeys.read:own
-sinas.apikeys.update:own
-sinas.apikeys.delete:own
-sinas.apikeys.read:all
-sinas.apikeys.delete:all
+sinas.api_keys.post:own
+sinas.api_keys.get:own
+sinas.api_keys.delete:own
+sinas.api_keys.get:all
+sinas.api_keys.delete:all
 
 # Groups - Group Management
-sinas.groups.create:all
-sinas.groups.read:all
-sinas.groups.update:all
+sinas.groups.post:all
+sinas.groups.get:all
+sinas.groups.put:all
 sinas.groups.delete:all
 sinas.groups.manage_members:all
 sinas.groups.manage_permissions:all
 
-# Ontology - Data Sources
-# Format: sinas.ontology.datasources.{namespace}.{action}:scope
-# Examples:
-#   sinas.ontology.datasources.*.create:all (all namespaces)
-#   sinas.ontology.datasources.commerce.create:group (specific namespace)
-sinas.ontology.datasources.*.create:group
-sinas.ontology.datasources.*.create:all
-sinas.ontology.datasources.*.read:group
-sinas.ontology.datasources.*.read:all
-sinas.ontology.datasources.*.update:group
-sinas.ontology.datasources.*.update:all
-sinas.ontology.datasources.*.delete:group
-sinas.ontology.datasources.*.delete:all
-
-# Ontology - Concepts
-# Format: sinas.ontology.concepts.{namespace}.{action}:scope or sinas.ontology.concepts.{namespace}.{concept}.{action}:scope
-# Examples:
-#   sinas.ontology.concepts.*.create:all (create concepts in any namespace)
-#   sinas.ontology.concepts.commerce.create:group (create concepts in commerce namespace)
-#   sinas.ontology.concepts.commerce.customer.read:group (read specific concept)
-sinas.ontology.concepts.*.create:group
-sinas.ontology.concepts.*.create:all
-sinas.ontology.concepts.*.read:group
-sinas.ontology.concepts.*.read:all
-sinas.ontology.concepts.*.*.read:group
-sinas.ontology.concepts.*.*.read:all
-sinas.ontology.concepts.*.update:group
-sinas.ontology.concepts.*.update:all
-sinas.ontology.concepts.*.*.update:group
-sinas.ontology.concepts.*.*.update:all
-sinas.ontology.concepts.*.delete:group
-sinas.ontology.concepts.*.delete:all
-sinas.ontology.concepts.*.*.delete:group
-sinas.ontology.concepts.*.*.delete:all
-
-# Ontology - Properties
-# Format: sinas.ontology.properties.{namespace}.{concept}.{action}:scope
-# Examples:
-#   sinas.ontology.properties.*.*.create:all (create properties in any concept)
-#   sinas.ontology.properties.commerce.*.create:group (create properties in commerce namespace)
-#   sinas.ontology.properties.commerce.customer.create:group (create properties in specific concept)
-sinas.ontology.properties.*.*.create:group
-sinas.ontology.properties.*.*.create:all
-sinas.ontology.properties.*.*.read:group
-sinas.ontology.properties.*.*.read:all
-sinas.ontology.properties.*.*.update:group
-sinas.ontology.properties.*.*.update:all
-sinas.ontology.properties.*.*.delete:group
-sinas.ontology.properties.*.*.delete:all
-
-# Ontology - Relationships
-# Format: sinas.ontology.relationships.{namespace}.{action}:scope (relationships span concepts)
-# Examples:
-#   sinas.ontology.relationships.*.create:all (create relationships in any namespace)
-#   sinas.ontology.relationships.commerce.create:group (create relationships in commerce namespace)
-sinas.ontology.relationships.*.create:group
-sinas.ontology.relationships.*.create:all
-sinas.ontology.relationships.*.read:group
-sinas.ontology.relationships.*.read:all
-sinas.ontology.relationships.*.update:group
-sinas.ontology.relationships.*.update:all
-sinas.ontology.relationships.*.delete:group
-sinas.ontology.relationships.*.delete:all
-
-# Ontology - Queries
-# Format: sinas.ontology.queries.{namespace}.{concept}.{action}:scope
-# Examples:
-#   sinas.ontology.queries.*.*.create:all (create queries for any concept)
-#   sinas.ontology.queries.commerce.customer.update:group (update query for specific concept)
-sinas.ontology.queries.*.*.create:group
-sinas.ontology.queries.*.*.create:all
-sinas.ontology.queries.*.*.read:group
-sinas.ontology.queries.*.*.read:all
-sinas.ontology.queries.*.*.update:group
-sinas.ontology.queries.*.*.update:all
-sinas.ontology.queries.*.*.delete:group
-sinas.ontology.queries.*.*.delete:all
-sinas.ontology.queries.*.*.execute:group
-sinas.ontology.queries.*.*.execute:all
-
-# Ontology - Endpoints
-# Format: sinas.ontology.endpoints.{namespace}.{concept}.{action}:scope
-# Examples:
-#   sinas.ontology.endpoints.*.*.create:all (create endpoints for any concept)
-#   sinas.ontology.endpoints.commerce.*.create:group (create endpoints in commerce namespace)
-sinas.ontology.endpoints.*.*.create:group
-sinas.ontology.endpoints.*.*.create:all
-sinas.ontology.endpoints.*.*.read:group
-sinas.ontology.endpoints.*.*.read:all
-sinas.ontology.endpoints.*.*.update:group
-sinas.ontology.endpoints.*.*.update:all
-sinas.ontology.endpoints.*.*.delete:group
-sinas.ontology.endpoints.*.*.delete:all
-
-# Ontology - Records (CUD operations for self-managed concepts)
-# Format: sinas.ontology.records.{namespace}.{concept}.{action}:scope
-# Examples:
-#   sinas.ontology.records.*.*.create:group (all concepts in all namespaces)
-#   sinas.ontology.records.commerce.*.create:group (all concepts in commerce namespace)
-#   sinas.ontology.records.commerce.customer.create:group (specific concept)
-sinas.ontology.records.*.*.create:group
-sinas.ontology.records.*.*.create:all
-sinas.ontology.records.*.*.read:group
-sinas.ontology.records.*.*.read:all
-sinas.ontology.records.*.*.update:group
-sinas.ontology.records.*.*.update:all
-sinas.ontology.records.*.*.delete:group
-sinas.ontology.records.*.*.delete:all
-
-# Context Store - User/Assistant Context Management
-sinas.contexts.create:own
-sinas.contexts.create:group
-sinas.contexts.create:all
-sinas.contexts.read:own
-sinas.contexts.read:group
-sinas.contexts.read:all
-sinas.contexts.update:own
-sinas.contexts.update:group
-sinas.contexts.update:all
-sinas.contexts.delete:own
-sinas.contexts.delete:group
-sinas.contexts.delete:all
+# State Store - User/Agent Context Management
+sinas.states.post:own
+sinas.states.post:group
+sinas.states.post:all
+sinas.states.get:own
+sinas.states.get:group
+sinas.states.get:all
+sinas.states.put:own
+sinas.states.put:group
+sinas.states.put:all
+sinas.states.delete:own
+sinas.states.delete:group
+sinas.states.delete:all
+sinas.states.search:own
+sinas.states.search:group
+sinas.states.search:all
 
 # Request Logs - Compliance Logging
-sinas.logs.read:own
-sinas.logs.read:all
+sinas.logs.get:own
+sinas.logs.get:all
 
-# Email - Email Template Management
-sinas.email.templates.create:own
-sinas.email.templates.read:own
-sinas.email.templates.read:all
-sinas.email.templates.update:own
-sinas.email.templates.update:all
-sinas.email.templates.delete:own
-sinas.email.templates.delete:all
-
-# Email - Sending and Reading Emails
-sinas.email.send:own
-sinas.email.read:own
-sinas.email.read:all
-sinas.email.delete:own
-sinas.email.delete:all
-
-# Email - Inbox Management
-sinas.email.inboxes.create:own
-sinas.email.inboxes.read:own
-sinas.email.inboxes.read:all
-sinas.email.inboxes.update:own
-sinas.email.inboxes.update:all
-sinas.email.inboxes.delete:own
-sinas.email.inboxes.delete:all
-
-# Email - Inbox Rule Management
-sinas.email.inboxes.rules.create:own
-sinas.email.inboxes.rules.read:own
-sinas.email.inboxes.rules.read:all
-sinas.email.inboxes.rules.update:own
-sinas.email.inboxes.rules.update:all
-sinas.email.inboxes.rules.delete:own
-sinas.email.inboxes.rules.delete:all
-
-# Documents - Folder Management
-sinas.documents.folders.create:own
-sinas.documents.folders.create:group
-sinas.documents.folders.create:all
-sinas.documents.folders.read:own
-sinas.documents.folders.read:group
-sinas.documents.folders.read:all
-sinas.documents.folders.update:own
-sinas.documents.folders.update:group
-sinas.documents.folders.update:all
-sinas.documents.folders.delete:own
-sinas.documents.folders.delete:group
-sinas.documents.folders.delete:all
-
-# Documents - Document Management
-# Note: Document permissions are inherited from their parent folder
-sinas.documents.create:own
-sinas.documents.create:group
-sinas.documents.create:all
-sinas.documents.read:own
-sinas.documents.read:group
-sinas.documents.read:all
-sinas.documents.update:own
-sinas.documents.update:group
-sinas.documents.update:all
-sinas.documents.delete:own
-sinas.documents.delete:group
-sinas.documents.delete:all
-
-# Documents - Description Generation
-sinas.documents.generate_description:own
-sinas.documents.generate_description:group
-sinas.documents.generate_description:all
-
-# Tags - Tag Definition Management
-sinas.tags.definitions.create:own
-sinas.tags.definitions.create:group
-sinas.tags.definitions.create:all
-sinas.tags.definitions.read:own
-sinas.tags.definitions.read:group
-sinas.tags.definitions.read:all
-sinas.tags.definitions.update:own
-sinas.tags.definitions.update:group
-sinas.tags.definitions.update:all
-sinas.tags.definitions.delete:own
-sinas.tags.definitions.delete:group
-sinas.tags.definitions.delete:all
-
-# Tags - Tagger Rule Management
-sinas.tags.tagger_rules.create:own
-sinas.tags.tagger_rules.create:group
-sinas.tags.tagger_rules.create:all
-sinas.tags.tagger_rules.read:own
-sinas.tags.tagger_rules.read:group
-sinas.tags.tagger_rules.read:all
-sinas.tags.tagger_rules.update:own
-sinas.tags.tagger_rules.update:group
-sinas.tags.tagger_rules.update:all
-sinas.tags.tagger_rules.delete:own
-sinas.tags.tagger_rules.delete:group
-sinas.tags.tagger_rules.delete:all
-sinas.tags.tagger_rules.execute:own
-sinas.tags.tagger_rules.execute:group
-sinas.tags.tagger_rules.execute:all
-
-# Tags - Resource Tagging (document, email)
-# Format: sinas.tags.{resource_type}.{action}:scope
-sinas.tags.document.create:own
-sinas.tags.document.create:group
-sinas.tags.document.create:all
-sinas.tags.document.read:own
-sinas.tags.document.read:group
-sinas.tags.document.read:all
-sinas.tags.document.delete:own
-sinas.tags.document.delete:group
-sinas.tags.document.delete:all
-
-sinas.tags.email.create:own
-sinas.tags.email.create:group
-sinas.tags.email.create:all
-sinas.tags.email.read:own
-sinas.tags.email.read:group
-sinas.tags.email.read:all
-sinas.tags.email.delete:own
-sinas.tags.email.delete:group
-sinas.tags.email.delete:all
+# Config Management - Declarative Configuration
+sinas.config.apply:all
+sinas.config.validate:all
+sinas.config.export:all

@@ -1,5 +1,6 @@
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Index, JSON, Text
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Index, JSON, Text, select
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict
 import uuid
 
@@ -11,9 +12,19 @@ class User(Base):
 
     id: Mapped[uuid_pk]
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
+
+    # Config tracking
+    managed_by: Mapped[Optional[str]] = mapped_column(Text)
+    config_name: Mapped[Optional[str]] = mapped_column(Text)
+    config_checksum: Mapped[Optional[str]] = mapped_column(Text)
+
+    # External auth (null = OTP user)
+    external_user_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True)
+    external_metadata: Mapped[Optional[Dict]] = mapped_column(JSON)
+    last_external_sync: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     group_memberships: Mapped[List["GroupMember"]] = relationship(
@@ -23,8 +34,8 @@ class User(Base):
         "APIKey", back_populates="user", foreign_keys="[APIKey.user_id]"
     )
     chats: Mapped[List["Chat"]] = relationship("Chat", back_populates="user")
-    assistants: Mapped[List["Assistant"]] = relationship("Assistant", back_populates="user")
-    context_stores: Mapped[List["ContextStore"]] = relationship("ContextStore", back_populates="user")
+    agents: Mapped[List["Agent"]] = relationship("Agent", back_populates="user")
+    states: Mapped[List["State"]] = relationship("State", back_populates="user")
 
 
 class Group(Base):
@@ -37,6 +48,14 @@ class Group(Base):
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 
+    # Config tracking
+    managed_by: Mapped[Optional[str]] = mapped_column(Text)
+    config_name: Mapped[Optional[str]] = mapped_column(Text)
+    config_checksum: Mapped[Optional[str]] = mapped_column(Text)
+
+    # External group mapping (1:1)
+    external_group_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True)
+
     # Relationships
     members: Mapped[List["GroupMember"]] = relationship(
         "GroupMember", back_populates="group", cascade="all, delete-orphan"
@@ -44,15 +63,17 @@ class Group(Base):
     permissions: Mapped[List["GroupPermission"]] = relationship(
         "GroupPermission", back_populates="group", cascade="all, delete-orphan"
     )
-    data_sources: Mapped[List["DataSource"]] = relationship(
-        "DataSource", back_populates="group", cascade="all, delete-orphan"
+    states: Mapped[List["State"]] = relationship(
+        "State", back_populates="group", cascade="all, delete-orphan"
     )
-    concepts: Mapped[List["Concept"]] = relationship(
-        "Concept", back_populates="group", cascade="all, delete-orphan"
-    )
-    context_stores: Mapped[List["ContextStore"]] = relationship(
-        "ContextStore", back_populates="group", cascade="all, delete-orphan"
-    )
+
+    @classmethod
+    async def get_by_name(cls, db: AsyncSession, name: str) -> Optional["Group"]:
+        """Get group by name."""
+        result = await db.execute(
+            select(cls).where(cls.name == name)
+        )
+        return result.scalar_one_or_none()
 
 
 class GroupMember(Base):
@@ -120,3 +141,24 @@ class APIKey(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="api_keys", foreign_keys=[user_id])
+
+
+class RefreshToken(Base):
+    """
+    Refresh tokens for JWT authentication.
+    Stored in database for revocation control (logout, user deactivation).
+    """
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid_pk]
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    token_prefix: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    expires_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_used_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[created_at]
+    revoked_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])

@@ -7,6 +7,7 @@ from app.core.encryption import EncryptionService
 from .base import BaseLLMProvider
 from .openai_provider import OpenAIProvider
 from .ollama_provider import OllamaProvider
+from .mistral_provider import MistralProvider
 
 
 async def create_provider(
@@ -47,7 +48,9 @@ async def create_provider(
         if model:
             if model.startswith("gpt-") or model.startswith("o1-"):
                 provider_type = "openai"
-            elif "/" in model or model in ["llama", "mistral", "codellama"]:
+            elif model.startswith("mistral-") or model.startswith("pixtral-") or model.startswith("codestral-"):
+                provider_type = "mistral"
+            elif "/" in model or model in ["llama", "codellama"]:
                 provider_type = "ollama"
             else:
                 provider_type = None
@@ -91,6 +94,11 @@ async def create_provider(
 
     if provider_type == "openai":
         return OpenAIProvider(
+            api_key=api_key,
+            base_url=provider_config.api_endpoint
+        )
+    elif provider_type == "mistral":
+        return MistralProvider(
             api_key=api_key,
             base_url=provider_config.api_endpoint
         )

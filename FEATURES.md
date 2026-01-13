@@ -780,7 +780,7 @@ HTTP endpoints that trigger function execution.
 
 ### 5.2 Webhook Invocation
 
-**Endpoint:** `POST /webhooks/{path}` (or configured HTTP method)
+**Endpoint:** `POST/GET/PATCH/PUT/DELETE /h/{path}` (or configured HTTP method)
 
 - Accepts JSON request body
 - Query parameters merged with body
@@ -791,7 +791,7 @@ HTTP endpoints that trigger function execution.
 
 **Example:**
 ```bash
-curl -X POST https://api.sinas.io/webhooks/customer/signup \
+curl -X POST https://prod.my-org.sinas.cloud/api/v1/h/customer_signup \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -888,24 +888,30 @@ Cron-based scheduled execution of functions.
 
 ## 7. Ontology System
 
-Semantic data layer with three operational modes for flexible data management.
+Flexible semantic data layer with schema-on-read architecture, enabling instant CRUD APIs over any database with permission-based row-level security.
 
 ### 7.1 Overview
 
-The ontology system supports three data modes:
+The ontology system provides a unified architecture for accessing data across multiple databases, whether SINAS-managed or external. All concepts map to physical tables/views through **TableMappings**, supporting:
 
-1. **External Query Mode** - Query external databases without copying data
-2. **Synced Mode** - Periodically sync external data to local tables
-3. **Self-Managed Mode** - Fully managed data with auto-generated CRUD APIs
+- **Multi-datasource access** - Connect to any PostgreSQL database
+- **Flexible table mapping** - Multiple concepts can map to the same table
+- **Column aliasing** - Property names differ from column names
+- **Ownership mapping** - Link external user/group IDs to SINAS permissions
+- **Instant CRUD APIs** - Auto-generated REST endpoints with RLS
+- **DDL operations** - Create/manage tables and views via API
 
 **Key Components:**
-- **Concepts** - Entity types (e.g., Customer, Order, Product)
+- **Concepts** - Logical entity definitions (e.g., Customer, Order)
 - **Properties** - Attributes of concepts (e.g., name, email, price)
-- **Relationships** - Connections between concepts (e.g., Customer has Orders)
-- **Datasources** - External database connections
-- **Endpoints** - Query configurations with filters, joins, ordering
+- **Relationships** - Connections between concepts
+- **Datasources** - Database connections (local or external)
+- **TableMappings** - Maps concepts to physical tables with column mappings
+- **External Mappings** - Links external user/group IDs to SINAS
 
 ### 7.2 Datasources
+
+Database connections for ontology data access.
 
 #### Create Datasource
 **Endpoint:** `POST /api/v1/ontology/datasources`
@@ -913,43 +919,175 @@ The ontology system supports three data modes:
 **Request:**
 ```json
 {
-  "name": "Production PostgreSQL",
+  "name": "Production CRM",
   "type": "postgres",
-  "conn_string": "postgresql://user:pass@host:5432/db",
-  "default_database": "production",
+  "conn_string": "postgresql://user:pass@host:5432/crm",
+  "default_database": "crm",
   "default_schema": "public",
+  "is_read_only": false,
   "group_id": "uuid"
 }
 ```
 
 **Supported Types:**
 - PostgreSQL (`postgres`)
-- Snowflake (`snowflake`)
-- BigQuery (`bigquery`)
+- Snowflake (`snowflake`) - Future
+- BigQuery (`bigquery`) - Future
 
 **Features:**
 - Connection string encryption (Fernet)
+- Read-only flag prevents DDL operations
 - Default database/schema configuration
 - Group-based access control
-- Encrypted storage of credentials
+- Supports both SINAS-managed and external databases
 
 **Permission:** `sinas.ontology.datasources.create:group`
 
-#### List Datasources
-**Endpoint:** `GET /api/v1/ontology/datasources`
-
-- Filter by group
-- Connection strings remain encrypted
-
-#### Get Datasource
-**Endpoint:** `GET /api/v1/ontology/datasources/{datasource_id}`
-
-#### Update/Delete Datasource
+#### List/Get/Update/Delete Datasources
 - Standard CRUD operations
-- Update connection details
-- Requires namespace-specific permissions
+- Connection strings remain encrypted in responses
+- Cannot modify read-only datasources
 
-### 7.3 Concepts
+### 7.3 DDL Operations
+
+Manage database tables and views programmatically on writable datasources.
+
+#### List Tables
+**Endpoint:** `GET /api/v1/ddl/datasources/{datasource_id}/tables`
+
+**Query Parameters:**
+- `schema` - Database schema (default: datasource default_schema)
+
+**Response:**
+```json
+{
+  "tables": [
+    {"table_name": "customers", "schema": "public"},
+    {"table_name": "orders", "schema": "public"}
+  ]
+}
+```
+
+**Permission:** `sinas.datasources.{id}.ddl.read:group`
+
+#### Get Table Schema
+**Endpoint:** `GET /api/v1/ddl/datasources/{datasource_id}/tables/{table_name}`
+
+**Response:**
+```json
+{
+  "table_name": "customers",
+  "schema": "public",
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": false,
+      "column_default": "gen_random_uuid()",
+      "is_primary_key": true
+    },
+    {
+      "column_name": "name",
+      "data_type": "text",
+      "is_nullable": false
+    }
+  ]
+}
+```
+
+#### Create Table
+**Endpoint:** `POST /api/v1/ddl/datasources/{datasource_id}/tables`
+
+**Request:**
+```json
+{
+  "table_name": "customers",
+  "schema": "public",
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "primary_key": true,
+      "default": "gen_random_uuid()"
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "email",
+      "type": "TEXT",
+      "unique": true
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "default": "NOW()"
+    }
+  ]
+}
+```
+
+**Features:**
+- Only works on non-read-only datasources
+- Supports constraints (PRIMARY KEY, UNIQUE, NOT NULL)
+- Column defaults
+- Postgres-specific data types
+
+**Permission:** `sinas.datasources.{id}.ddl:group`
+
+#### Add Column
+**Endpoint:** `POST /api/v1/ddl/datasources/{datasource_id}/tables/{table_name}/columns`
+
+**Request:**
+```json
+{
+  "name": "phone",
+  "type": "TEXT",
+  "nullable": true,
+  "default": null,
+  "schema": "public"
+}
+```
+
+#### Drop Table
+**Endpoint:** `DELETE /api/v1/ddl/datasources/{datasource_id}/tables/{table_name}`
+
+**Query Parameters:**
+- `schema` - Database schema
+- `cascade` - Drop dependent objects (default: false)
+
+**Permission:** `sinas.datasources.{id}.ddl:group`
+
+#### Create View
+**Endpoint:** `POST /api/v1/ddl/datasources/{datasource_id}/views`
+
+**Request:**
+```json
+{
+  "view_name": "active_customers_with_orders",
+  "query": "SELECT c.*, COUNT(o.id) as order_count FROM customers c LEFT JOIN orders o ON c.id = o.customer_id WHERE c.status = 'active' GROUP BY c.id",
+  "schema": "public",
+  "replace": false
+}
+```
+
+**Features:**
+- SQL query validation (SELECT only)
+- Replace existing views with `replace: true`
+- Complex queries with JOINs, aggregations, filters
+- Read-only data access layer
+
+**Permission:** `sinas.datasources.{id}.ddl:group`
+
+#### List/Drop Views
+- `GET /api/v1/ddl/datasources/{id}/views` - List all views
+- `DELETE /api/v1/ddl/datasources/{id}/views/{view_name}` - Drop view
+
+### 7.4 Concepts
+
+Logical entity definitions that map to physical tables.
 
 #### Create Concept
 **Endpoint:** `POST /api/v1/ontology/concepts`
@@ -960,59 +1098,41 @@ The ontology system supports three data modes:
   "namespace": "crm",
   "name": "customer",
   "display_name": "Customer",
-  "description": "Customer entity with contact and order information",
-  "is_self_managed": false,
+  "description": "Customer entity",
   "group_id": "uuid"
 }
 ```
 
 **Features:**
 - Namespace organization (e.g., crm, inventory, hr)
-- Display names for UI
-- Self-managed flag determines data mode
+- Logical schema definition
+- No automatic table creation (use DDL API or map to existing tables)
 - Unique namespace.name per group
-- Automatic table creation for self-managed concepts
+- Properties define expected fields
 
 **Permission:** `sinas.ontology.concepts.{namespace}.create:group`
 
-#### List Concepts
-**Endpoint:** `GET /api/v1/ontology/concepts`
+#### List/Get/Update/Delete Concepts
+- Standard CRUD operations
+- Update display_name and description only
+- Cannot change namespace or name after creation
+- Deletion requires removing TableMapping first
 
-**Query Parameters:**
-- `group_id` - Filter by group
-- `namespace` - Filter by namespace
-- `is_self_managed` - Filter by data mode
-
-**Permission-Based Filtering:**
-- Only returns concepts user has permission to read
-- Checks `sinas.ontology.concepts.{namespace}.{name}.read:group`
-
-#### Get Concept
-**Endpoint:** `GET /api/v1/ontology/concepts/{concept_id}`
+**Permission Patterns:**
+- `sinas.ontology.concepts.{namespace}.create:group`
+- `sinas.ontology.concepts.{namespace}.{name}.read:group`
+- `sinas.ontology.concepts.{namespace}.{name}.update:group`
+- `sinas.ontology.concepts.{namespace}.{name}.delete:group`
 
 #### Get Concept Properties
 **Endpoint:** `GET /api/v1/ontology/concepts/{concept_id}/properties`
 
-- List all properties for a concept
+- List all properties defined for concept
 - Ordered by name
 
-#### Update Concept
-**Endpoint:** `PUT /api/v1/ontology/concepts/{concept_id}`
+### 7.5 Properties
 
-- Update display_name and description only
-- Cannot change namespace, name, or is_self_managed
-
-**Permission:** `sinas.ontology.concepts.{namespace}.{name}.update:group`
-
-#### Delete Concept
-**Endpoint:** `DELETE /api/v1/ontology/concepts/{concept_id}`
-
-- Drops associated tables (self-managed or synced)
-- Cascading deletion of properties, relationships, queries
-
-**Permission:** `sinas.ontology.concepts.{namespace}.{name}.delete:group`
-
-### 7.4 Properties
+Define attributes of concepts (logical schema).
 
 #### Create Property
 **Endpoint:** `POST /api/v1/ontology/properties`
@@ -1024,7 +1144,7 @@ The ontology system supports three data modes:
   "name": "email",
   "display_name": "Email Address",
   "description": "Customer email",
-  "data_type": "string",
+  "data_type": "TEXT",
   "is_identifier": false,
   "is_required": true,
   "default_value": null
@@ -1032,30 +1152,30 @@ The ontology system supports three data modes:
 ```
 
 **Data Types:**
-- `string` - Text data
-- `integer` - Whole numbers
-- `float` - Decimal numbers
-- `boolean` - True/false
-- `datetime` - Date and time
-- `date` - Date only
-- `json` - JSON objects
-- `uuid` - UUIDs
+- `TEXT` - String data
+- `INTEGER` - Whole numbers
+- `DECIMAL` - Decimal numbers
+- `BOOLEAN` - True/false
+- `DATETIME` - Timestamp with timezone
+- `DATE` - Date only
+- `JSON` - JSON objects
+- `UUID` - UUIDs
 
 **Features:**
-- Identifier flag for primary keys
-- Required flag for NOT NULL
-- Default values
-- For self-managed concepts: automatically adds column to table
-- Type changes create new column (old preserved with timestamp suffix)
+- Logical schema definition
+- No automatic column creation (use DDL API)
+- Maps to physical columns via TableMapping
+- Identifier flag marks primary keys
+- Required flag indicates NOT NULL
 
 **Permission:** `sinas.ontology.properties.create:group`
 
 #### List/Get/Update/Delete Properties
 - Standard CRUD operations
-- Updates trigger schema migrations for self-managed concepts
-- Deletes rename column with `deleted_{name}_{timestamp}` prefix
+- Property updates don't affect database schema (use DDL API)
+- Maps to columns through `column_mappings` in TableMapping
 
-### 7.5 Relationships
+### 7.6 Relationships
 
 #### Create Relationship
 **Endpoint:** `POST /api/v1/ontology/relationships`
@@ -1084,181 +1204,102 @@ The ontology system supports three data modes:
 - Used in endpoint joins
 - Bidirectional relationship modeling
 
-### 7.6 Concept Queries (External Query & Synced Modes)
+### 7.7 Table Mappings
 
-#### Create Concept Query
-**Endpoint:** `POST /api/v1/ontology/queries`
+Maps concepts to physical tables/views with column mappings and ownership configuration.
+
+#### Create Table Mapping
+**Endpoint:** `POST /api/v1/ontology/table-mappings`
 
 **Request:**
 ```json
 {
   "concept_id": "uuid",
-  "data_source_id": "uuid",
-  "sql_text": "SELECT id, name, email FROM customers WHERE active = true",
-  "sync_enabled": true,
-  "sync_schedule": "0 */6 * * *"
-}
-```
-
-**Modes:**
-1. **External Query** (`sync_enabled: false`):
-   - Query runs on-demand against external database
-   - No local data storage
-   - Real-time data access
-   - SQL validated for safety (no DROP, DELETE, etc.)
-
-2. **Synced** (`sync_enabled: true`):
-   - Data synced to local table on schedule
-   - APScheduler manages cron jobs
-   - Table: `ontology_sync_{namespace}_{concept_name}`
-   - Faster queries, eventual consistency
-
-**Features:**
-- SQL validation (only SELECT with JOINs allowed)
-- Parameterized queries via endpoints
-- Sync scheduling with cron expressions
-- Last synced timestamp tracking
-
-**Permission:** `sinas.ontology.queries.create:group`
-
-#### List/Get/Update Queries
-- View query configuration
-- Update SQL or sync schedule
-- Trigger manual sync
-
-### 7.7 Query Endpoints
-
-#### Create Endpoint
-**Endpoint:** `POST /api/v1/ontology/endpoints`
-
-**Request:**
-```json
-{
-  "name": "active_customers",
-  "route": "crm/customers/active",
-  "subject_concept_id": "customer_uuid",
-  "response_format": "json",
-  "enabled": true,
-  "description": "List active customers with filtering",
-  "limit_default": 100
-}
-```
-
-**Features:**
-- Custom API routes
-- Response formats: JSON, CSV
-- Query compilation from configuration
-- Automatic SQL generation
-- Enable/disable endpoints
-
-**Permission:** `sinas.ontology.endpoints.create:group`
-
-#### Endpoint Configuration Components
-
-**Endpoint Properties** - Select fields to return:
-```json
-{
-  "endpoint_id": "uuid",
-  "concept_id": "uuid",
-  "property_id": "uuid",
-  "alias": "customer_name",
-  "aggregation": null,
-  "include": true
-}
-```
-
-**Endpoint Filters** - Query parameters:
-```json
-{
-  "endpoint_id": "uuid",
-  "property_id": "uuid",
-  "op": "eq",
-  "param_name": "tier",
-  "required": false,
-  "default_value": "gold"
-}
-```
-
-**Filter Operators:**
-- `eq` - Equals
-- `ne` - Not equals
-- `gt` - Greater than
-- `lt` - Less than
-- `gte` - Greater than or equal
-- `lte` - Less than or equal
-- `like` - Pattern matching
-- `in` - In list
-- `between` - Between values
-
-**Endpoint Joins** - Related concepts:
-```json
-{
-  "endpoint_id": "uuid",
-  "relationship_id": "uuid",
-  "join_type": "inner"
-}
-```
-
-**Join Types:**
-- `inner` - Inner join
-- `left` - Left outer join
-- `right` - Right outer join
-- `full` - Full outer join
-
-**Endpoint Ordering** - Sort results:
-```json
-{
-  "endpoint_id": "uuid",
-  "property_id": "uuid",
-  "direction": "asc",
-  "priority": 0
-}
-```
-
-#### Execute Query Endpoint
-**Endpoint:** `POST /api/v1/ontology/execute/{endpoint_route}`
-
-**Request:**
-```json
-{
-  "filters": {
-    "tier": "gold",
-    "signup_date_gte": "2024-01-01"
+  "datasource_id": "uuid",
+  "table_name": "customers",
+  "column_mappings": {
+    "fullName": "full_name",
+    "emailAddress": "email"
   },
-  "limit": 50
-}
-```
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "customer_name": "John Doe",
-      "email": "john@example.com",
-      "tier": "gold"
-    }
-  ],
-  "count": 1
+  "user_ownership_column": "assigned_to_email",
+  "group_ownership_column": "department"
 }
 ```
 
 **Features:**
-- Dynamic filter application
-- Pagination with configurable limits
-- SQL injection prevention
-- Query validation
-- Permission-based access control
+- **1:1 relationship** - One concept maps to one table/view
+- **Column aliasing** - Property names map to different column names
+- **Ownership columns** - Enable permission-based row filtering
+- **Flexible mapping** - Same table can be used by multiple concepts (via different namespaces)
+- **View support** - Map to database views for complex queries
 
-**Permission:** `sinas.ontology.execute.{namespace}.{concept}.read:group`
+**Ownership Filtering:**
+- `user_ownership_column` - Column containing user identifier for `:own` scope
+- `group_ownership_column` - Column containing group identifier for `:group` scope
+- Combined with ExternalIdentityMapping/ExternalGroupMapping for row-level security
 
-### 7.8 Self-Managed Concept Data
+**Permission:** `sinas.ontology.table_mappings.create:group`
 
-For `is_self_managed: true` concepts, auto-generated CRUD endpoints.
+#### List/Get/Update/Delete Table Mappings
+- Standard CRUD operations
+- Update column mappings as schema evolves
+- Update ownership columns for RLS changes
+
+### 7.8 External Identity/Group Mappings
+
+Link external user/group identifiers to SINAS for ownership-based queries.
+
+#### Create External Identity Mapping
+**Endpoint:** `POST /api/v1/ontology/external-mappings/identities`
+
+**Request:**
+```json
+{
+  "user_id": "sinas_user_uuid",
+  "datasource_id": "external_crm_uuid",
+  "external_user_ref": "alice@company.com"
+}
+```
+
+**Usage:**
+When querying with `:own` scope:
+```sql
+-- Automatic WHERE clause injection
+WHERE user_ownership_column IN (
+  SELECT external_user_ref
+  FROM external_identity_mappings
+  WHERE user_id = :current_user_id AND datasource_id = :datasource_id
+)
+```
+
+**Permission:** `sinas.ontology.external_mappings.create:group`
+
+#### Create External Group Mapping
+**Endpoint:** `POST /api/v1/ontology/external-mappings/groups`
+
+**Request:**
+```json
+{
+  "group_id": "sinas_group_uuid",
+  "datasource_id": "external_crm_uuid",
+  "external_group_ref": "Region_West"
+}
+```
+
+**Usage:**
+When querying with `:group` scope, similar WHERE clause injection on `group_ownership_column`.
+
+#### List/Get/Delete Mappings
+- View all mappings for datasource
+- Bulk import from external systems
+- Remove stale mappings
+
+### 7.10 Concept Data (CRUD APIs)
+
+Auto-generated REST endpoints for all concepts with TableMapping.
 
 #### Create Record
-**Endpoint:** `POST /api/v1/ontology/data/{namespace}/{concept}`
+**Endpoint:** `POST /api/v1/ontology/records/{namespace}/{concept}`
 
 **Request:**
 ```json
@@ -1272,24 +1313,44 @@ For `is_self_managed: true` concepts, auto-generated CRUD endpoints.
 ```
 
 **Features:**
-- Automatic schema validation
-- UUID generation
-- Audit timestamps (created_at, updated_at)
-- Property type validation
+- Property validation against concept schema
+- Column mapping applied via TableMapping
+- Executes INSERT on configured datasource
+- Works with external databases
+- UUID/timestamp generation (if columns exist)
+
+**Behavior:**
+1. Lookup concept, TableMapping, datasource
+2. Map property names to column names via `column_mappings`
+3. Execute INSERT against datasource
+4. Return created record with ID
 
 **Permission:** `sinas.ontology.data.{namespace}.{concept}.create:group`
 
 #### List Records
-**Endpoint:** `GET /api/v1/ontology/data/{namespace}/{concept}`
+**Endpoint:** `GET /api/v1/ontology/records/{namespace}/{concept}`
 
+**Query Parameters:**
+- `skip` - Pagination offset
+- `limit` - Max results
+- `filter_{property}` - Filter by property values (e.g., `?filter_status=active`)
+
+**Features:**
 - Pagination support
-- Returns all records with metadata
+- Ownership-based filtering (`:own` and `:group` scopes)
+- Column mappings applied in reverse (column → property)
+- Works across all datasources
+
+**Permission:** `sinas.ontology.data.{namespace}.{concept}.read:group`
 
 #### Get Record
-**Endpoint:** `GET /api/v1/ontology/data/{namespace}/{concept}/{record_id}`
+**Endpoint:** `GET /api/v1/ontology/records/{namespace}/{concept}/{record_id}`
+
+- Fetch single record by ID
+- Ownership check applied
 
 #### Update Record
-**Endpoint:** `PATCH /api/v1/ontology/data/{namespace}/{concept}/{record_id}`
+**Endpoint:** `PATCH /api/v1/ontology/records/{namespace}/{concept}/{record_id}`
 
 **Request:**
 ```json
@@ -1300,14 +1361,60 @@ For `is_self_managed: true` concepts, auto-generated CRUD endpoints.
 }
 ```
 
+**Features:**
 - Partial updates
-- Updates `updated_at` timestamp
+- Column mappings applied
+- Ownership check (can only update own/group records)
+
+**Permission:** `sinas.ontology.data.{namespace}.{concept}.update:group`
 
 #### Delete Record
-**Endpoint:** `DELETE /api/v1/ontology/data/{namespace}/{concept}/{record_id}`
+**Endpoint:** `DELETE /api/v1/ontology/records/{namespace}/{concept}/{record_id}`
 
+**Features:**
+- Ownership check
 - Permanent deletion
-- Cascading deletes based on relationships
+- Works on writable datasources only
+
+**Permission:** `sinas.ontology.data.{namespace}.{concept}.delete:group`
+
+### 7.11 Query Optimization
+
+**Database Views for Complex Queries:**
+Instead of endpoint configurations, create views:
+
+```sql
+-- Via DDL API
+POST /api/v1/ddl/datasources/{id}/views
+{
+  "view_name": "active_customers_with_orders",
+  "query": "SELECT c.*, COUNT(o.id) as order_count
+            FROM customers c
+            LEFT JOIN orders o ON c.id = o.customer_id
+            WHERE c.status = 'active'
+            GROUP BY c.id"
+}
+```
+
+Then map a concept to the view:
+```json
+// Create concept
+POST /api/v1/ontology/concepts
+{"namespace": "crm", "name": "ActiveCustomer", ...}
+
+// Create table mapping to view
+POST /api/v1/ontology/table-mappings
+{
+  "concept_id": "...",
+  "datasource_id": "...",
+  "table_name": "active_customers_with_orders"
+}
+```
+
+Now query via CRUD API:
+```
+GET /api/v1/ontology/records/crm/ActiveCustomer
+```
 
 ---
 
@@ -2258,3 +2365,906 @@ Created on startup:
    - Use group-based access control
    - Regular backups
    - Audit data access logs
+
+---
+
+## 14. Declarative Configuration
+
+### 14.1 Overview
+
+Declarative configuration allows defining SINAS resources in YAML files that can be applied idempotently, similar to Kubernetes and Terraform. This enables GitOps workflows, version-controlled infrastructure, and consistent environments across deployments.
+
+**Key Features:**
+- **Infrastructure as Code** - All resources defined in version-controlled YAML
+- **Idempotent Operations** - Apply same config multiple times safely
+- **Change Detection** - Updates existing resources when config changes
+- **Resource Tracking** - Tracks which resources are managed by config
+- **Environment Variables** - Support for `${ENV_VAR}` interpolation
+- **Validation** - Schema validation before applying
+- **Dry Run** - Preview changes before applying
+
+### 14.2 YAML Schema
+
+#### Root Structure
+
+```yaml
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: my-sinas-config
+  description: Production configuration
+  labels:
+    environment: production
+    team: platform
+
+spec:
+  # Resource definitions
+  groups: [...]
+  users: [...]
+  llmProviders: [...]
+  datasources: [...]
+  ontology: {...}
+  functions: [...]
+  assistants: [...]
+  schedules: [...]
+  webhooks: [...]
+  emailTemplates: [...]
+  emailInboxes: [...]
+  tagDefinitions: [...]
+  taggerRules: [...]
+  folders: [...]
+```
+
+#### Groups
+
+```yaml
+spec:
+  groups:
+    - name: Engineering
+      description: Engineering team
+      emailDomain: eng.company.com
+      permissions:
+        - key: sinas.functions.*:group
+          value: true
+        - key: sinas.ontology.*:group
+          value: true
+```
+
+#### Users
+
+```yaml
+spec:
+  users:
+    - email: admin@company.com
+      isActive: true
+      groups:
+        - Admins
+      permissions:
+        - key: sinas.*:all
+          value: true
+```
+
+#### LLM Providers
+
+```yaml
+spec:
+  llmProviders:
+    - name: openai
+      type: openai
+      apiKey: ${OPENAI_API_KEY}  # Environment variable interpolation
+      models:
+        - gpt-4
+        - gpt-4-turbo
+        - gpt-3.5-turbo
+      isActive: true
+
+    - name: ollama_local
+      type: ollama
+      endpoint: http://localhost:11434
+      models:
+        - llama2
+        - mistral
+      isActive: true
+```
+
+#### Datasources
+
+```yaml
+spec:
+  datasources:
+    - name: main_postgres
+      type: postgres
+      connectionString: ${DATABASE_URL}
+      defaultDatabase: sinas
+      defaultSchema: public
+      isReadOnly: false
+      groupName: Admins
+      permissions:
+        ddl: true
+
+    - name: external_crm
+      type: postgres
+      connectionString: ${CRM_DATABASE_URL}
+      defaultSchema: public
+      isReadOnly: true
+      groupName: Engineering
+```
+
+#### Ontology
+
+```yaml
+spec:
+  ontology:
+    namespaces:
+      - name: crm
+        description: CRM data model
+
+    concepts:
+      - namespace: crm
+        name: Customer
+        displayName: Customer
+        description: Customer entity
+        groupName: Engineering
+        properties:
+          - name: id
+            displayName: ID
+            dataType: UUID
+            isIdentifier: true
+            isRequired: true
+
+          - name: fullName
+            displayName: Full Name
+            dataType: TEXT
+            isRequired: true
+
+          - name: email
+            displayName: Email
+            dataType: TEXT
+            isRequired: true
+
+          - name: phone
+            displayName: Phone
+            dataType: TEXT
+            isRequired: false
+
+          - name: status
+            displayName: Status
+            dataType: TEXT
+            defaultValue: active
+
+          - name: createdAt
+            displayName: Created At
+            dataType: DATETIME
+            defaultValue: NOW()
+
+    tableMappings:
+      - conceptRef: crm.Customer
+        datasourceName: main_postgres
+        tableName: customers
+        columnMappings:
+          fullName: full_name
+          createdAt: created_at
+        userOwnershipColumn: user_email
+        groupOwnershipColumn: department
+
+    externalIdentityMappings:
+      - userEmail: alice@company.com
+        datasourceName: external_crm
+        externalUserRef: alice@company.com
+
+    externalGroupMappings:
+      - groupName: Engineering
+        datasourceName: external_crm
+        externalGroupRef: Engineering
+```
+
+#### Functions
+
+```yaml
+spec:
+  functions:
+    - name: send_email
+      description: Send an email to a recipient
+      groupName: Engineering
+      code: |
+        def send_email(to: str, subject: str, body: str):
+            """Send an email to a recipient"""
+            print(f"Sending email to {to}: {subject}")
+            return {"status": "sent", "to": to}
+      inputSchema:
+        type: object
+        properties:
+          to:
+            type: string
+            format: email
+          subject:
+            type: string
+          body:
+            type: string
+        required:
+          - to
+          - subject
+          - body
+      outputSchema:
+        type: object
+        properties:
+          status:
+            type: string
+          to:
+            type: string
+      requirements:
+        - requests>=2.28.0
+      tags:
+        - email
+        - communication
+
+    - name: create_customer
+      description: Create a new customer in CRM
+      groupName: Engineering
+      code: |
+        def create_customer(full_name: str, email: str, phone: str = None, status: str = "active"):
+            """Create a new customer"""
+            # Implementation here
+            return {"id": "uuid", "full_name": full_name, "email": email}
+      inputSchema:
+        type: object
+        properties:
+          full_name:
+            type: string
+          email:
+            type: string
+            format: email
+          phone:
+            type: string
+          status:
+            type: string
+        required:
+          - full_name
+          - email
+```
+
+#### Assistants
+
+```yaml
+spec:
+  assistants:
+    - name: CRM Assistant
+      description: Helps manage CRM data
+      groupName: Engineering
+      llmProviderName: openai
+      model: gpt-4
+      temperature: 0.7
+      systemPrompt: |
+        You are a helpful CRM assistant. You can help users manage customers,
+        contacts, and companies. Use the available tools to query and update data.
+      enabledWebhooks: []
+      enabledMcpTools: []
+      enabledFunctions:
+        - send_email
+        - create_customer
+      contextNamespaces:
+        - customer-support
+      ontologyNamespaces:
+        - crm
+      ontologyConcepts:
+        - crm.Customer
+        - crm.Contact
+        - crm.Company
+
+    - name: General Assistant
+      description: General-purpose assistant
+      groupName: Users
+      llmProviderName: openai
+      model: gpt-4-turbo
+      temperature: 0.7
+      systemPrompt: You are a helpful assistant.
+      enabledFunctions:
+        - send_email
+```
+
+#### Webhooks
+
+```yaml
+spec:
+  webhooks:
+    - path: customer/created
+      functionName: send_email
+      httpMethod: POST
+      description: Notify team when customer created
+      requiresAuth: true
+      groupName: Engineering
+      defaultValues:
+        subject: New Customer Created
+        body: A new customer has been created
+```
+
+#### Schedules
+
+```yaml
+spec:
+  schedules:
+    - name: daily_report
+      functionName: generate_daily_report
+      description: Generate daily sales report
+      cronExpression: "0 9 * * *"
+      timezone: America/New_York
+      groupName: Engineering
+      inputData:
+        report_type: sales
+        recipients:
+          - team@company.com
+```
+
+#### Email Templates
+
+```yaml
+spec:
+  emailTemplates:
+    - name: welcome_email
+      subject: Welcome to {{company_name}}!
+      htmlTemplate: |
+        <html>
+          <body>
+            <h1>Hello {{user_name}}</h1>
+            <p>Welcome to our service!</p>
+          </body>
+        </html>
+      textTemplate: |
+        Hello {{user_name}}
+
+        Welcome to our service!
+      description: New user welcome email
+      groupName: Engineering
+      variables:
+        - user_name
+        - company_name
+```
+
+#### Email Inboxes
+
+```yaml
+spec:
+  emailInboxes:
+    - emailAddress: support@company.com
+      description: Customer support inbox
+      webhookName: process_support_email
+      taggerRuleName: support_auto_tagger
+      isActive: true
+      groupName: Engineering
+```
+
+#### Tag Definitions
+
+```yaml
+spec:
+  tagDefinitions:
+    - name: priority
+      displayName: Priority Level
+      valueType: enum
+      appliesTo:
+        - document
+        - email
+      description: Priority level
+      allowedValues:
+        - low
+        - medium
+        - high
+        - critical
+      isRequired: false
+      groupName: Engineering
+
+    - name: document_type
+      displayName: Document Type
+      valueType: enum
+      appliesTo:
+        - document
+      allowedValues:
+        - invoice
+        - contract
+        - report
+        - memo
+      groupName: Engineering
+```
+
+#### Tagger Rules
+
+```yaml
+spec:
+  taggerRules:
+    - name: document_auto_tagger
+      description: Automatically tag documents
+      scopeType: folder
+      folderName: Default Documents
+      assistantName: Document Tagger
+      tagDefinitions:
+        - priority
+        - document_type
+      autoTrigger: true
+      isActive: true
+      groupName: Engineering
+```
+
+#### Folders
+
+```yaml
+spec:
+  folders:
+    - name: Default Documents
+      description: Default document folder
+      ownerType: group
+      groupName: Engineering
+      parentFolderName: null
+      autoTaggerRuleName: document_auto_tagger
+```
+
+### 14.3 API Endpoints
+
+#### Apply Configuration
+
+**Endpoint:** `POST /api/v1/config/apply`
+
+**Request:**
+```json
+{
+  "config": "... YAML content ...",
+  "dryRun": false,
+  "force": false
+}
+```
+
+**Features:**
+- **Idempotent** - Can apply same config multiple times
+- **Change Detection** - Only updates resources that changed
+- **Dry Run** - Preview changes without applying
+- **Force** - Skip validation warnings (use carefully)
+- **Transaction** - All changes applied atomically (rollback on error)
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": {
+    "created": {
+      "groups": 2,
+      "users": 1,
+      "functions": 3,
+      "assistants": 2
+    },
+    "updated": {
+      "datasources": 1,
+      "ontology.concepts": 2
+    },
+    "unchanged": {
+      "llmProviders": 2
+    },
+    "deleted": {
+      "webhooks": 1
+    }
+  },
+  "changes": [
+    {
+      "action": "create",
+      "resourceType": "function",
+      "resourceName": "send_email",
+      "details": "Created new function"
+    },
+    {
+      "action": "update",
+      "resourceType": "ontology.concept",
+      "resourceName": "crm.Customer",
+      "changes": {
+        "properties": {
+          "added": ["phone"],
+          "removed": [],
+          "modified": ["email"]
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "LLM provider 'openai' API key not set in environment"
+  ]
+}
+```
+
+**Permission:** `sinas.config.apply:all` (admin only)
+
+#### Get Current Configuration
+
+**Endpoint:** `GET /api/v1/config/export`
+
+**Query Parameters:**
+- `includeSecrets` - Include encrypted secrets (default: false)
+- `managedOnly` - Only export config-managed resources (default: false)
+
+**Response:** YAML configuration file representing current state
+
+**Features:**
+- Export current configuration as YAML
+- Optionally exclude secrets
+- Filter to only config-managed resources
+- Use for backup or migration
+
+**Permission:** `sinas.config.read:all`
+
+#### Validate Configuration
+
+**Endpoint:** `POST /api/v1/config/validate`
+
+**Request:**
+```json
+{
+  "config": "... YAML content ..."
+}
+```
+
+**Response:**
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "path": "spec.functions[0].code",
+      "message": "Invalid Python syntax: unexpected indent"
+    }
+  ],
+  "warnings": [
+    {
+      "path": "spec.llmProviders[0].apiKey",
+      "message": "Environment variable OPENAI_API_KEY not set"
+    }
+  ]
+}
+```
+
+**Permission:** `sinas.config.validate:all`
+
+### 14.4 Resource Management
+
+#### Resource Tracking
+
+All resources created by declarative config are marked with:
+- `managed_by: config`
+- `config_name: {metadata.name}`
+- `config_checksum: {resource_checksum}`
+
+This allows:
+1. Identifying config-managed resources
+2. Detecting changes in config vs. actual state
+3. Preventing manual modification of managed resources
+4. Cleanup of removed resources
+
+#### Idempotency Strategy
+
+**Create:**
+1. Check if resource exists (by unique identifier)
+2. If exists and `managed_by: config`, update if changed
+3. If exists and not managed, error (conflict)
+4. If not exists, create
+
+**Update:**
+1. Calculate resource checksum from YAML
+2. Compare with stored checksum
+3. If different, update resource and checksum
+4. If same, skip (no-op)
+
+**Delete:**
+1. Resources in database but not in config
+2. Only delete if `managed_by: config`
+3. Optionally protect critical resources
+
+#### Change Detection
+
+Hash-based change detection:
+```python
+def calculate_resource_hash(resource_data: dict) -> str:
+    """Calculate stable hash of resource definition"""
+    # Sort keys for consistent hashing
+    sorted_data = json.dumps(resource_data, sort_keys=True)
+    return hashlib.sha256(sorted_data.encode()).hexdigest()
+```
+
+Stored in resource metadata:
+```sql
+ALTER TABLE functions ADD COLUMN config_checksum TEXT;
+ALTER TABLE assistants ADD COLUMN config_checksum TEXT;
+-- ... for all resource types
+```
+
+#### Conflict Resolution
+
+**Manual Changes:**
+If a config-managed resource is modified manually:
+1. Detect checksum mismatch
+2. Warn user of conflict
+3. Optionally:
+   - Overwrite with config (default)
+   - Skip update (preserve manual changes)
+   - Fail and require manual resolution
+
+**Resource References:**
+Resources reference each other by name:
+- `functionName: send_email` → resolve to function ID
+- `groupName: Engineering` → resolve to group ID
+- `datasourceName: main_postgres` → resolve to datasource ID
+
+### 14.5 Implementation Details
+
+#### Database Schema Changes
+
+```sql
+-- Add config tracking columns to all resource tables
+ALTER TABLE groups ADD COLUMN managed_by TEXT;
+ALTER TABLE groups ADD COLUMN config_name TEXT;
+ALTER TABLE groups ADD COLUMN config_checksum TEXT;
+
+ALTER TABLE users ADD COLUMN managed_by TEXT;
+ALTER TABLE users ADD COLUMN config_name TEXT;
+ALTER TABLE users ADD COLUMN config_checksum TEXT;
+
+-- ... repeat for all resource tables
+```
+
+#### Environment Variable Interpolation
+
+```python
+def interpolate_env_vars(value: str) -> str:
+    """Replace ${VAR_NAME} with environment variable value"""
+    pattern = r'\$\{([A-Z_][A-Z0-9_]*)\}'
+
+    def replacer(match):
+        var_name = match.group(1)
+        if var_name not in os.environ:
+            raise ValueError(f"Environment variable {var_name} not set")
+        return os.environ[var_name]
+
+    return re.sub(pattern, replacer, value)
+```
+
+#### Validation Pipeline
+
+1. **YAML Parsing** - Parse YAML and check syntax
+2. **Schema Validation** - Validate against JSON schema
+3. **Reference Validation** - Check all references resolve
+4. **Semantic Validation** - Business logic validation
+5. **Conflict Detection** - Check for conflicts with existing resources
+
+#### Application Order
+
+Resources applied in dependency order:
+1. Groups (no dependencies)
+2. Users (depends on groups)
+3. LLM Providers (no dependencies)
+4. Datasources (depends on groups)
+5. Ontology (depends on datasources, groups)
+6. Functions (depends on groups)
+7. Assistants (depends on llm providers, functions, ontology)
+8. Webhooks (depends on functions)
+9. Schedules (depends on functions)
+10. Email Templates (depends on groups)
+11. Email Inboxes (depends on webhooks, groups)
+12. Tag Definitions (depends on groups)
+13. Tagger Rules (depends on assistants, tag definitions)
+14. Folders (depends on groups, tagger rules)
+
+### 14.6 Startup Integration
+
+#### Auto-Apply on Startup
+
+**Environment Variable:**
+```bash
+CONFIG_FILE=/path/to/sinas-config.yaml
+AUTO_APPLY_CONFIG=true
+```
+
+**Startup Sequence:**
+```python
+async def startup_event():
+    # ... existing startup ...
+
+    # Apply declarative config if specified
+    config_file = os.getenv("CONFIG_FILE")
+    auto_apply = os.getenv("AUTO_APPLY_CONFIG", "false").lower() == "true"
+
+    if config_file and auto_apply:
+        logger.info(f"Auto-applying config from {config_file}")
+        with open(config_file) as f:
+            config_yaml = f.read()
+
+        result = await apply_config(config_yaml, dry_run=False)
+        if not result.success:
+            logger.error(f"Config application failed: {result.errors}")
+            raise RuntimeError("Failed to apply startup config")
+
+        logger.info(f"Config applied successfully: {result.summary}")
+```
+
+#### Replace Default Data
+
+Current `app/services/default_data.py` can be replaced with:
+`config/default-data.yaml`
+
+```yaml
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: default-demo-data
+  description: Default data for development and demo
+
+spec:
+  # All default data defined here instead of Python code
+  ...
+```
+
+Set in development:
+```bash
+CONFIG_FILE=config/default-data.yaml
+AUTO_APPLY_CONFIG=true
+ENABLE_DEFAULT_DATA=false  # Disable old approach
+```
+
+### 14.7 Example Workflows
+
+#### GitOps Deployment
+
+```bash
+# 1. Define infrastructure in Git
+git clone https://github.com/company/sinas-config.git
+cd sinas-config
+
+# 2. Edit config
+vim production.yaml
+
+# 3. Validate before commit
+curl -X POST http://localhost:8000/api/v1/config/validate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat production.yaml)\"}"
+
+# 4. Commit and push
+git add production.yaml
+git commit -m "Add new CRM functions"
+git push
+
+# 5. CI/CD applies config
+# In CI pipeline:
+curl -X POST http://localhost:8000/api/v1/config/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat production.yaml)\", \"dryRun\": false}"
+```
+
+#### Multi-Environment Management
+
+```
+config/
+├── base.yaml              # Shared config
+├── dev.yaml               # Dev overrides
+├── staging.yaml           # Staging overrides
+└── production.yaml        # Production config
+```
+
+**base.yaml:**
+```yaml
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: base-config
+
+spec:
+  groups:
+    - name: Engineering
+      # ...
+
+  functions:
+    - name: send_email
+      # ... shared function definition
+```
+
+**production.yaml:**
+```yaml
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: production-config
+  extends: base-config  # Inherit from base
+
+spec:
+  llmProviders:
+    - name: openai
+      apiKey: ${PROD_OPENAI_API_KEY}
+
+  datasources:
+    - name: main_postgres
+      connectionString: ${PROD_DATABASE_URL}
+```
+
+#### Local Development
+
+```bash
+# Local dev config
+cat > local-dev.yaml <<EOF
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: local-dev
+
+spec:
+  llmProviders:
+    - name: ollama
+      type: ollama
+      endpoint: http://localhost:11434
+      models:
+        - llama2
+
+  datasources:
+    - name: dev_postgres
+      type: postgres
+      connectionString: postgresql://localhost/sinas_dev
+EOF
+
+# Apply locally
+docker-compose up -d
+docker exec -it sinas-app curl -X POST http://localhost:8000/api/v1/config/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"config\": \"$(cat local-dev.yaml)\"}"
+```
+
+### 14.8 Migration from Default Data
+
+**Before (Python):**
+```python
+# app/services/default_data.py
+async def create_default_data(db: AsyncSession):
+    # Create datasource
+    datasource = Datasource(
+        name="managed_datasource",
+        type="postgres",
+        conn_string=managed_conn_string,
+        ...
+    )
+    db.add(datasource)
+
+    # Create concept
+    customer_concept = Concept(
+        namespace="crm",
+        name="Customer",
+        ...
+    )
+    db.add(customer_concept)
+    # ... many lines of imperative code
+```
+
+**After (YAML):**
+```yaml
+# config/default-data.yaml
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: default-data
+
+spec:
+  datasources:
+    - name: managed_datasource
+      type: postgres
+      connectionString: ${MANAGED_DATABASE_URL}
+      # ...
+
+  ontology:
+    concepts:
+      - namespace: crm
+        name: Customer
+        # ...
+```
+
+**Benefits:**
+- ✅ Version controlled and diffable
+- ✅ Declarative and readable
+- ✅ Idempotent and safe to re-apply
+- ✅ Can be shared across environments
+- ✅ Easier to review and audit
+- ✅ GitOps compatible
+
+---

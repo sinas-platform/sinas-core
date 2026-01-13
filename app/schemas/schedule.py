@@ -7,6 +7,7 @@ import uuid
 
 class ScheduledJobCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    function_namespace: str = Field(default="default", min_length=1, max_length=255, pattern=r'^[a-zA-Z_][a-zA-Z0-9_]*$')
     function_name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     cron_expression: str = Field(..., min_length=1)
@@ -22,6 +23,7 @@ class ScheduledJobCreate(BaseModel):
 
 
 class ScheduledJobUpdate(BaseModel):
+    function_namespace: Optional[str] = None
     function_name: Optional[str] = None
     description: Optional[str] = None
     cron_expression: Optional[str] = None
@@ -41,6 +43,7 @@ class ScheduledJobUpdate(BaseModel):
 class ScheduledJobResponse(BaseModel):
     id: uuid.UUID
     name: str
+    function_namespace: str
     function_name: str
     description: Optional[str]
     cron_expression: str

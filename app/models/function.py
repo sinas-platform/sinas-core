@@ -1,5 +1,6 @@
-from sqlalchemy import String, Text, Boolean, Integer, JSON, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, Boolean, Integer, JSON, ForeignKey, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Dict, Any
 import uuid
 
@@ -9,28 +10,43 @@ from .base import Base, uuid_pk, created_at, updated_at
 class Function(Base):
     __tablename__ = "functions"
     __table_args__ = (
-        UniqueConstraint('user_id', 'name', name='uix_function_user_name'),
+        UniqueConstraint('namespace', 'name', name='uix_function_namespace_name'),
     )
 
     id: Mapped[uuid_pk]
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     group_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("groups.id"), index=True)
+    namespace: Mapped[str] = mapped_column(String(255), nullable=False, default="default", index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     code: Mapped[str] = mapped_column(Text, nullable=False)
     input_schema: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
     output_schema: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
     requirements: Mapped[List[str]] = mapped_column(JSON, default=list)
-    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+    enabled_namespaces: Mapped[List[str]] = mapped_column(JSON, default=list)  # Namespaces this function can call (empty = own namespace only)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
+
+    # Config tracking
+    managed_by: Mapped[Optional[str]] = mapped_column(Text)
+    config_name: Mapped[Optional[str]] = mapped_column(Text)
+    config_checksum: Mapped[Optional[str]] = mapped_column(Text)
 
     # Relationships
     user: Mapped["User"] = relationship("User")
     versions: Mapped[List["FunctionVersion"]] = relationship(
         "FunctionVersion", back_populates="function", cascade="all, delete-orphan"
     )
+
+    @classmethod
+    async def get_by_name(cls, db: AsyncSession, namespace: str, name: str, user_id: Optional[uuid.UUID] = None) -> Optional["Function"]:
+        """Get function by namespace and name, optionally filtered by user_id for ownership."""
+        query = select(cls).where(cls.namespace == namespace, cls.name == name, cls.is_active == True)
+        if user_id is not None:
+            query = query.where(cls.user_id == user_id)
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
 
 
 class FunctionVersion(Base):

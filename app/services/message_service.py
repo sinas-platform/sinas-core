@@ -6,17 +6,18 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from jinja2 import Template
 import jsonschema
 
-from app.models import Chat, Message, Assistant
+from app.models import Chat, Message, Agent
+from app.models.llm_provider import LLMProvider
 from app.models.execution import Execution, ExecutionStatus
 from app.providers import create_provider
-from app.services.webhook_tools import WebhookToolConverter
-from app.services.context_tools import ContextTools
-from app.services.ontology_tools import OntologyTools
+from app.services.function_tools import FunctionToolConverter
+from app.services.state_tools import StateTools
 from app.services.mcp import mcp_client
 from app.services.execution_engine import executor
+from app.services.content_converter import ContentConverter
+from app.services.template_renderer import render_template
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,23 +28,22 @@ class MessageService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.webhook_converter = WebhookToolConverter()
-        self.context_tools = ContextTools()
-        self.ontology_tools = OntologyTools()
+        self.function_converter = FunctionToolConverter()
+        self.context_tools = StateTools()
 
-    async def create_chat_with_assistant(
+    async def create_chat_with_agent(
         self,
-        assistant_id: str,
+        agent_id: str,
         user_id: str,
         input_data: Dict[str, Any],
         group_id: Optional[str] = None,
         name: Optional[str] = None
     ) -> Chat:
         """
-        Create a chat with an assistant using input validation and template rendering.
+        Create a chat with an agent using input validation and template rendering.
 
         Args:
-            assistant_id: Assistant to use
+            agent_id: Agent to use
             user_id: User ID
             input_data: Input data to validate and use for template rendering
             group_id: Optional group ID
@@ -55,38 +55,38 @@ class MessageService:
         Raises:
             ValueError: If input validation fails
         """
-        # Get assistant
+        # Get agent
         result = await self.db.execute(
-            select(Assistant).where(Assistant.id == assistant_id)
+            select(Agent).where(Agent.id == agent_id)
         )
-        assistant = result.scalar_one_or_none()
-        if not assistant:
-            raise ValueError("Assistant not found")
+        agent = result.scalar_one_or_none()
+        if not agent:
+            raise ValueError("Agent not found")
 
-        # Validate input against assistant's input_schema
-        if assistant.input_schema:
+        # Validate input against agent's input_schema
+        if agent.input_schema:
             try:
-                jsonschema.validate(instance=input_data, schema=assistant.input_schema)
+                jsonschema.validate(instance=input_data, schema=agent.input_schema)
             except jsonschema.ValidationError as e:
                 raise ValueError(f"Input validation failed: {e.message}")
 
         # Create chat
+        # Note: Chat no longer stores tool config - this is managed at agent level
+        # Store agent input context in chat_metadata for function parameter templating
         chat = Chat(
             user_id=user_id,
             group_id=group_id,
-            assistant_id=assistant_id,
-            title=name or f"Chat with {assistant.name}",
-            enabled_webhooks=assistant.enabled_webhooks,
-            enabled_mcp_tools=assistant.enabled_mcp_tools,
-            enabled_assistants=assistant.enabled_assistants
+            agent_id=agent_id,
+            title=name or f"Chat with {agent.name}",
+            chat_metadata={"agent_input": input_data} if input_data else None
         )
         self.db.add(chat)
         await self.db.commit()
         await self.db.refresh(chat)
 
         # Pre-populate with initial_messages if present
-        if assistant.initial_messages:
-            for msg_data in assistant.initial_messages:
+        if agent.initial_messages:
+            for msg_data in agent.initial_messages:
                 message = Message(
                     chat_id=chat.id,
                     role=msg_data["role"],
@@ -106,12 +106,12 @@ class MessageService:
         provider: Optional[str],
         model: Optional[str],
         temperature: float,
-        enabled_webhooks: Optional[List[str]],
-        disabled_webhooks: Optional[List[str]],
+        enabled_functions: Optional[List[str]],
+        disabled_functions: Optional[List[str]],
         enabled_mcp_tools: Optional[List[str]],
         disabled_mcp_tools: Optional[List[str]],
         inject_context: bool,
-        context_namespaces: Optional[List[str]],
+        state_namespaces: Optional[List[str]],
         context_limit: int,
         template_variables: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -129,70 +129,88 @@ class MessageService:
         if not chat:
             raise ValueError("Chat not found")
 
-        # Get assistant settings if chat has an assistant
-        assistant = None
-        if chat.assistant_id:
+        # Get agent settings if chat has an agent
+        agent = None
+        if chat.agent_id:
             from sqlalchemy.orm import joinedload
             result = await self.db.execute(
-                select(Assistant)
-                .options(joinedload(Assistant.llm_provider))
-                .where(Assistant.id == chat.assistant_id)
+                select(Agent)
+                .options(joinedload(Agent.llm_provider))
+                .where(Agent.id == chat.agent_id)
             )
-            assistant = result.scalar_one_or_none()
+            agent = result.scalar_one_or_none()
 
         # Determine final provider/model/temperature
-        # Priority: message params > assistant settings > database default
+        # Priority: message params > agent settings > database default
 
         # Get provider name (for create_provider call)
         provider_name = None
         if provider:
             provider_name = provider
-        elif assistant and assistant.llm_provider_id:
+        elif agent and agent.llm_provider_id:
             # Load provider relationship if needed
-            if not assistant.llm_provider:
+            if not agent.llm_provider:
                 from app.models import LLMProvider
                 result = await self.db.execute(
-                    select(LLMProvider).where(LLMProvider.id == assistant.llm_provider_id)
+                    select(LLMProvider).where(LLMProvider.id == agent.llm_provider_id)
                 )
-                assistant.llm_provider = result.scalar_one_or_none()
-            if assistant.llm_provider:
-                provider_name = assistant.llm_provider.name
+                agent.llm_provider = result.scalar_one_or_none()
+            if agent.llm_provider:
+                provider_name = agent.llm_provider.name
 
-        # Get model: message param > assistant model > provider default
-        final_model = model or (assistant.model if assistant else None)
-        if not final_model and assistant and assistant.llm_provider:
-            final_model = assistant.llm_provider.default_model
+        # Get model: message param > agent model > provider default
+        final_model = model or (agent.model if agent else None)
+        if not final_model and agent and agent.llm_provider:
+            final_model = agent.llm_provider.default_model
 
-        final_temperature = temperature if temperature != 0.7 else (assistant.temperature if assistant else 0.7)
+        final_temperature = temperature if temperature != 0.7 else (agent.temperature if agent else 0.7)
+
+        # Get provider type for content conversion (needed before building conversation history)
+        provider_type = None
+        if provider_name:
+            result = await self.db.execute(
+                select(LLMProvider).where(LLMProvider.name == provider_name)
+            )
+            provider_config = result.scalar_one_or_none()
+            if provider_config:
+                provider_type = provider_config.provider_type
+
+        # If still no provider type, try to detect from model
+        if not provider_type and final_model:
+            if final_model.startswith("gpt-") or final_model.startswith("o1-"):
+                provider_type = "openai"
+            elif final_model.startswith("mistral-") or final_model.startswith("pixtral-"):
+                provider_type = "mistral"
+            else:
+                provider_type = "ollama"  # Default fallback
 
         # Save user message
         user_message = Message(
             chat_id=chat_id,
             role="user",
-            content=content,
-            enabled_webhooks=enabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools
+            content=content
         )
         self.db.add(user_message)
         await self.db.commit()
         await self.db.refresh(user_message)
 
-        # Build conversation history
+        # Build conversation history (with content conversion)
         messages = await self._build_conversation_history(
             chat=chat,
             inject_context=inject_context,
             user_id=user_id,
-            context_namespaces=context_namespaces,
+            state_namespaces=state_namespaces,
             context_limit=context_limit,
-            template_variables=template_variables
+            template_variables=template_variables,
+            provider_type=provider_type
         )
 
         # Get available tools
         tools = await self._get_available_tools(
             user_id=user_id,
             chat=chat,
-            message_enabled_webhooks=enabled_webhooks,
-            message_disabled_webhooks=disabled_webhooks,
+            message_enabled_functions=enabled_functions,
+            message_disabled_functions=disabled_functions,
             message_enabled_mcp=enabled_mcp_tools,
             message_disabled_mcp=disabled_mcp_tools
         )
@@ -222,18 +240,18 @@ class MessageService:
             if provider_config:
                 final_model = provider_config.default_model
 
-        # Build response_format from assistant's output_schema if present
+        # Build response_format from agent's output_schema if present
         response_format = None
-        if assistant and assistant.output_schema and assistant.output_schema.get("properties"):
+        if agent and agent.output_schema and agent.output_schema.get("properties"):
             # Ensure schema has additionalProperties: false for strict mode
-            schema = dict(assistant.output_schema)
+            schema = dict(agent.output_schema)
             if "additionalProperties" not in schema:
                 schema["additionalProperties"] = False
 
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": f"{assistant.name.lower().replace(' ', '_')}_response",
+                    "name": f"{agent.name.lower().replace(' ', '_')}_response",
                     "strict": True,
                     "schema": schema
                 }
@@ -256,37 +274,29 @@ class MessageService:
         chat_id: str,
         user_id: str,
         user_token: str,
-        content: str,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        enabled_webhooks: Optional[List[str]] = None,
-        disabled_webhooks: Optional[List[str]] = None,
-        enabled_mcp_tools: Optional[List[str]] = None,
-        disabled_mcp_tools: Optional[List[str]] = None,
-        inject_context: bool = True,
-        context_namespaces: Optional[List[str]] = None,
-        context_limit: int = 5,
-        template_variables: Optional[Dict[str, Any]] = None,
+        content: str
     ) -> Message:
-        """Send a message and get LLM response (non-streaming)."""
+        """
+        Send a message and get LLM response (non-streaming).
+
+        All agent behavior (LLM, tools, context) is defined by the agent.
+        """
         # Prepare message context
         prep = await self._prepare_message_context(
             chat_id=chat_id,
             user_id=user_id,
             content=content,
-            provider=provider,
-            model=model,
-            temperature=temperature,
-            enabled_webhooks=enabled_webhooks,
-            disabled_webhooks=disabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools,
-            disabled_mcp_tools=disabled_mcp_tools,
-            inject_context=inject_context,
-            context_namespaces=context_namespaces,
-            context_limit=context_limit,
-            template_variables=template_variables
+            provider=None,
+            model=None,
+            temperature=None,
+            enabled_functions=None,
+            disabled_functions=None,
+            enabled_mcp_tools=None,
+            disabled_mcp_tools=None,
+            inject_context=True,
+            state_namespaces=None,
+            context_limit=5,
+            template_variables=None
         )
 
         # Get response from LLM (non-streaming)
@@ -338,9 +348,7 @@ class MessageService:
         assistant_message = Message(
             chat_id=chat_id,
             role="assistant",
-            content=response.get("content", ""),
-            enabled_webhooks=enabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools
+            content=response.get("content", "")
         )
         self.db.add(assistant_message)
         await self.db.commit()
@@ -354,21 +362,11 @@ class MessageService:
         user_id: str,
         user_token: str,
         content: str,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        enabled_webhooks: Optional[List[str]] = None,
-        disabled_webhooks: Optional[List[str]] = None,
-        enabled_mcp_tools: Optional[List[str]] = None,
-        disabled_mcp_tools: Optional[List[str]] = None,
-        inject_context: bool = True,
-        context_namespaces: Optional[List[str]] = None,
-        context_limit: int = 5,
-        template_variables: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Send a message and stream LLM response.
+
+        All agent behavior (LLM, tools, context) is defined by the agent.
 
         Yields:
             Dict chunks with response data
@@ -378,17 +376,17 @@ class MessageService:
             chat_id=chat_id,
             user_id=user_id,
             content=content,
-            provider=provider,
-            model=model,
-            temperature=temperature,
-            enabled_webhooks=enabled_webhooks,
-            disabled_webhooks=disabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools,
-            disabled_mcp_tools=disabled_mcp_tools,
-            inject_context=inject_context,
-            context_namespaces=context_namespaces,
-            context_limit=context_limit,
-            template_variables=template_variables
+            provider=None,
+            model=None,
+            temperature=None,
+            enabled_functions=None,
+            disabled_functions=None,
+            enabled_mcp_tools=None,
+            disabled_mcp_tools=None,
+            inject_context=True,
+            state_namespaces=None,
+            context_limit=5,
+            template_variables=None
         )
 
         # Stream response
@@ -398,12 +396,10 @@ class MessageService:
             final_model=prep["final_model"],
             tools=prep["tools"],
             final_temperature=prep["final_temperature"],
-            max_tokens=max_tokens,
+            max_tokens=None,
             chat_id=chat_id,
             user_id=user_id,
             user_token=user_token,
-            enabled_webhooks=enabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools,
             provider_name=prep["provider_name"],
         ):
             yield chunk
@@ -419,8 +415,6 @@ class MessageService:
         chat_id: str,
         user_id: str,
         user_token: str,
-        enabled_webhooks: Optional[List[str]],
-        enabled_mcp_tools: Optional[List[str]],
         provider_name: Optional[str],
     ) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -483,9 +477,7 @@ class MessageService:
             chat_id=chat_id,
             role="assistant",
             content=full_content if full_content else None,
-            tool_calls=tool_calls if tool_calls else None,
-            enabled_webhooks=enabled_webhooks,
-            enabled_mcp_tools=enabled_mcp_tools
+            tool_calls=tool_calls if tool_calls else None
         )
         self.db.add(assistant_message)
         await self.db.commit()
@@ -511,9 +503,10 @@ class MessageService:
         chat: Chat,
         inject_context: bool = False,
         user_id: Optional[str] = None,
-        context_namespaces: Optional[List[str]] = None,
+        state_namespaces: Optional[List[str]] = None,
         context_limit: int = 5,
-        template_variables: Optional[Dict[str, Any]] = None
+        template_variables: Optional[Dict[str, Any]] = None,
+        provider_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Build conversation history for LLM with optional context injection.
@@ -522,7 +515,7 @@ class MessageService:
             chat: Chat object
             inject_context: Whether to inject stored context
             user_id: User ID for context retrieval
-            context_namespaces: Namespaces to filter context
+            state_namespaces: Namespaces to filter context
             context_limit: Max context items to inject
             template_variables: Variables for Jinja2 template rendering in system_prompt
 
@@ -531,54 +524,53 @@ class MessageService:
         """
         messages = []
 
-        # Add system prompt from assistant if exists
+        # Add system prompt from agent if exists
         system_content = ""
-        if chat.assistant_id:
+        if chat.agent_id:
             result = await self.db.execute(
-                select(Assistant).where(Assistant.id == chat.assistant_id)
+                select(Agent).where(Agent.id == chat.agent_id)
             )
-            assistant = result.scalar_one_or_none()
-            if assistant and assistant.system_prompt:
+            agent = result.scalar_one_or_none()
+            if agent and agent.system_prompt:
                 # Render system prompt with Jinja2 if template_variables provided
                 if template_variables:
                     try:
-                        template = Template(assistant.system_prompt)
-                        system_content = template.render(**template_variables)
+                        system_content = render_template(agent.system_prompt, template_variables)
                     except Exception as e:
                         logger.error(f"Failed to render system prompt template: {e}")
-                        system_content = assistant.system_prompt
+                        system_content = agent.system_prompt
                 else:
-                    system_content = assistant.system_prompt
+                    system_content = agent.system_prompt
 
-            # Add output schema instruction if assistant has one
-            if assistant and assistant.output_schema and assistant.output_schema.get("properties"):
-                schema_instruction = f"\n\nIMPORTANT: You must respond with valid JSON matching this exact schema:\n```json\n{json.dumps(assistant.output_schema, indent=2)}\n```\nDo not include any text outside the JSON object."
+            # Add output schema instruction if agent has one
+            if agent and agent.output_schema and agent.output_schema.get("properties"):
+                schema_instruction = f"\n\nIMPORTANT: You must respond with valid JSON matching this exact schema:\n```json\n{json.dumps(agent.output_schema, indent=2)}\n```\nDo not include any text outside the JSON object."
                 system_content += schema_instruction
 
         # Inject relevant context if enabled
-        # No assistant = no context injection
-        if inject_context and user_id and chat.assistant_id:
+        # No agent = no context injection
+        if inject_context and user_id and chat.agent_id:
             # Determine which namespaces to use:
-            # 1. Message-level context_namespaces (most specific)
-            # 2. Assistant-level context_namespaces
-            final_namespaces = context_namespaces
+            # 1. Message-level state_namespaces (most specific)
+            # 2. Agent-level state_namespaces
+            final_namespaces = state_namespaces
             if final_namespaces is None:
                 result = await self.db.execute(
-                    select(Assistant).where(Assistant.id == chat.assistant_id)
+                    select(Agent).where(Agent.id == chat.agent_id)
                 )
-                assistant = result.scalar_one_or_none()
-                if assistant:
-                    final_namespaces = assistant.context_namespaces
+                agent = result.scalar_one_or_none()
+                if agent:
+                    final_namespaces = agent.state_namespaces
 
             # Context access is opt-in: None or [] means no access
             if final_namespaces is None or len(final_namespaces) == 0:
                 # No namespaces = no context injection
                 pass
             else:
-                relevant_contexts = await ContextTools.get_relevant_contexts(
+                relevant_contexts = await StateTools.get_relevant_contexts(
                     db=self.db,
                     user_id=user_id,
-                    assistant_id=str(chat.assistant_id) if chat.assistant_id else None,
+                    agent_id=str(chat.agent_id) if chat.agent_id else None,
                     group_id=str(chat.group_id) if chat.group_id else None,
                     namespaces=final_namespaces,
                     limit=context_limit
@@ -615,8 +607,21 @@ class MessageService:
         for msg in chat_messages:
             message_dict = {"role": msg.role}
 
+            # Convert content to provider-specific format if needed
+            content = msg.content
+            if content and provider_type:
+                # Try to parse JSON content (might be multimodal)
+                try:
+                    parsed_content = json.loads(content)
+                    # If it's a list, it might be multimodal content
+                    if isinstance(parsed_content, list):
+                        content = ContentConverter.convert_message_content(parsed_content, provider_type)
+                except (json.JSONDecodeError, TypeError):
+                    # Not JSON, treat as plain string (no conversion needed)
+                    pass
+
             # Always include content, even if None (required for assistant messages with tool_calls)
-            message_dict["content"] = msg.content
+            message_dict["content"] = content
 
             if msg.tool_calls:
                 message_dict["tool_calls"] = msg.tool_calls
@@ -631,54 +636,54 @@ class MessageService:
 
         return messages
 
-    async def _get_assistant_tools(self, assistant_ids: List[str]) -> List[Dict[str, Any]]:
-        """Get tool definitions for enabled assistants."""
+    async def _get_agent_tools(self, agent_ids: List[str]) -> List[Dict[str, Any]]:
+        """Get tool definitions for enabled agents."""
         tools = []
 
-        for assistant_id in assistant_ids:
+        for agent_id in agent_ids:
             result = await self.db.execute(
-                select(Assistant).where(Assistant.id == assistant_id)
+                select(Agent).where(Agent.id == agent_id)
             )
-            assistant = result.scalar_one_or_none()
+            agent = result.scalar_one_or_none()
 
-            if not assistant or not assistant.is_active:
+            if not agent or not agent.is_active:
                 continue
 
-            # Build tool definition for this assistant
+            # Build tool definition for this agent
             # Use clean name, store ID as hidden parameter
             tool_def = {
                 "type": "function",
                 "function": {
-                    "name": f"call_assistant_{assistant.name.lower().replace(' ', '_').replace('-', '_')}",
-                    "description": f"{assistant.name}: {assistant.description}" if assistant.description else f"Call the {assistant.name} assistant"
+                    "name": f"call_agent_{agent.name.lower().replace(' ', '_').replace('-', '_')}",
+                    "description": f"{agent.name}: {agent.description}" if agent.description else f"Call the {agent.name} agent"
                 }
             }
 
-            # Build parameters - always include assistant_id as a hidden constant
-            if assistant.input_schema and assistant.input_schema.get("properties"):
-                # Merge input_schema with assistant_id
-                params = dict(assistant.input_schema)
+            # Build parameters - always include agent_id as a hidden constant
+            if agent.input_schema and agent.input_schema.get("properties"):
+                # Merge input_schema with agent_id
+                params = dict(agent.input_schema)
                 if "properties" not in params:
                     params["properties"] = {}
-                params["properties"]["_assistant_id"] = {
+                params["properties"]["_agent_id"] = {
                     "type": "string",
-                    "description": "Internal assistant identifier",
-                    "const": str(assistant.id)  # Force this specific value
+                    "description": "Internal agent identifier",
+                    "const": str(agent.id)  # Force this specific value
                 }
                 tool_def["function"]["parameters"] = params
             else:
-                # Default: simple prompt + hidden assistant_id
+                # Default: simple prompt + hidden agent_id
                 tool_def["function"]["parameters"] = {
                     "type": "object",
                     "properties": {
                         "prompt": {
                             "type": "string",
-                            "description": "The prompt or query to send to the assistant"
+                            "description": "The prompt or query to send to the agent"
                         },
-                        "_assistant_id": {
+                        "_agent_id": {
                             "type": "string",
-                            "description": "Internal assistant identifier",
-                            "const": str(assistant.id)
+                            "description": "Internal agent identifier",
+                            "const": str(agent.id)
                         }
                     },
                     "required": ["prompt"]
@@ -692,75 +697,76 @@ class MessageService:
         self,
         user_id: str,
         chat: Chat,
-        message_enabled_webhooks: Optional[List[str]],
-        message_disabled_webhooks: Optional[List[str]],
+        message_enabled_functions: Optional[List[str]],
+        message_disabled_functions: Optional[List[str]],
         message_enabled_mcp: Optional[List[str]],
         message_disabled_mcp: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
-        """Get all available tools (webhooks + MCP + context + ontology + assistants + execution continuation)."""
+        """Get all available tools (functions + MCP + context + agents + execution continuation)."""
         tools = []
 
-        # No assistant = no tools
-        if not chat.assistant_id:
+        # No agent = no tools
+        if not chat.agent_id:
             return tools
 
-        # Get assistant configuration
-        assistant = None
+        # Get agent configuration
+        agent = None
         result = await self.db.execute(
-            select(Assistant).where(Assistant.id == chat.assistant_id)
+            select(Agent).where(Agent.id == chat.agent_id)
         )
-        assistant = result.scalar_one_or_none()
-        if not assistant:
+        agent = result.scalar_one_or_none()
+        if not agent:
             return tools
 
-        # Add context tools (based on assistant's context_namespaces)
-        context_tool_defs = await ContextTools.get_tool_definitions(
+        # Add state tools (based on agent's state namespace access)
+        context_tool_defs = await StateTools.get_tool_definitions(
             db=self.db,
             user_id=user_id,
-            assistant_context_namespaces=assistant.context_namespaces
+            agent_state_namespaces_readonly=agent.state_namespaces_readonly,
+            agent_state_namespaces_readwrite=agent.state_namespaces_readwrite
         )
         tools.extend(context_tool_defs)
 
-        # Add ontology tools (filtered by assistant's ontology_namespaces and ontology_concepts)
-        ontology_tool_defs = await OntologyTools.get_tool_definitions(
-            db=self.db,
-            user_id=user_id,
-            ontology_namespaces=assistant.ontology_namespaces,
-            ontology_concepts=assistant.ontology_concepts
-        )
-        tools.extend(ontology_tool_defs)
+        # Ontology tools removed - extracted to sinas-ontology project
 
-        # Add assistant tools (other assistants this assistant can call)
-        assistant_enabled = assistant.enabled_assistants or []
-        if assistant_enabled:
-            assistant_tools = await self._get_assistant_tools(assistant_enabled)
-            tools.extend(assistant_tools)
+        # Add agent tools (other agents this agent can call)
+        agent_enabled = agent.enabled_agents or []
+        if agent_enabled:
+            agent_tools = await self._get_agent_tools(agent_enabled)
+            tools.extend(agent_tools)
 
-        # Determine webhook configuration
-        # Priority: message override > assistant config
-        # Note: Empty list [] means no webhooks, None means all webhooks
-        if message_enabled_webhooks is not None:
-            webhook_enabled = message_enabled_webhooks
+        # Determine function configuration
+        # Priority: message override > agent config
+        # Note: Empty list [] means no functions, None means all functions from agent
+        if message_enabled_functions is not None:
+            function_enabled = message_enabled_functions
         else:
-            webhook_enabled = assistant.enabled_webhooks
-        webhook_disabled = message_disabled_webhooks or []
+            function_enabled = agent.enabled_functions
+        function_disabled = message_disabled_functions or []
 
-        # Get webhook tools (only if list has items - opt-in)
-        if webhook_enabled and len(webhook_enabled) > 0:
-            webhook_tools = await self.webhook_converter.get_available_webhooks(
+        # Get agent input context for function parameter templating
+        agent_input_context = {}
+        if chat.chat_metadata and "agent_input" in chat.chat_metadata:
+            agent_input_context = chat.chat_metadata["agent_input"]
+
+        # Get function tools (only if list has items - opt-in)
+        if function_enabled and len(function_enabled) > 0:
+            function_tools = await self.function_converter.get_available_functions(
                 db=self.db,
                 user_id=user_id,
-                enabled_webhooks=webhook_enabled,
-                disabled_webhooks=webhook_disabled
+                enabled_functions=function_enabled,
+                disabled_functions=function_disabled,
+                function_parameters=agent.function_parameters,
+                agent_input_context=agent_input_context
             )
-            tools.extend(webhook_tools)
+            tools.extend(function_tools)
 
         # Determine MCP configuration
-        # Priority: message override > assistant config
+        # Priority: message override > agent config
         if message_enabled_mcp is not None:
             mcp_enabled = message_enabled_mcp
         else:
-            mcp_enabled = assistant.enabled_mcp_tools
+            mcp_enabled = agent.enabled_mcp_tools
 
         # Get MCP tools (only if list has items - opt-in)
         if mcp_enabled and len(mcp_enabled) > 0:
@@ -810,36 +816,36 @@ class MessageService:
 
         return tools
 
-    async def _execute_assistant_tool(
+    async def _execute_agent_tool(
         self,
         chat: Chat,
         user_id: str,
         user_token: str,
         tool_name: str,
         arguments: Dict[str, Any],
-        enabled_assistant_ids: List[str]
+        enabled_agent_ids: List[str]
     ) -> Dict[str, Any]:
-        """Execute an assistant tool call by creating a new chat and getting a response."""
-        # Extract assistant ID from arguments (passed as _assistant_id parameter)
-        assistant_id_str = arguments.get("_assistant_id")
-        if not assistant_id_str:
-            return {"error": f"Missing _assistant_id in assistant tool call"}
+        """Execute an agent tool call by creating a new chat and getting a response."""
+        # Extract agent ID from arguments (passed as _agent_id parameter)
+        agent_id_str = arguments.get("_agent_id")
+        if not agent_id_str:
+            return {"error": f"Missing _agent_id in agent tool call"}
 
-        # Verify this assistant ID is in enabled list
-        if assistant_id_str not in enabled_assistant_ids:
-            return {"error": f"Assistant {assistant_id_str} not enabled for this assistant"}
+        # Verify this agent ID is in enabled list
+        if agent_id_str not in enabled_agent_ids:
+            return {"error": f"Agent {agent_id_str} not enabled for this agent"}
 
-        # Load assistant
+        # Load agent
         result = await self.db.execute(
-            select(Assistant).where(Assistant.id == assistant_id_str)
+            select(Agent).where(Agent.id == agent_id_str)
         )
-        assistant = result.scalar_one_or_none()
+        agent = result.scalar_one_or_none()
 
-        if not assistant:
-            return {"error": f"Assistant not found: {assistant_id_str}"}
+        if not agent:
+            return {"error": f"Agent not found: {agent_id_str}"}
 
-        # Prepare input data for the assistant
-        # Filter out internal _assistant_id parameter
+        # Prepare input data for the agent
+        # Filter out internal _agent_id parameter
         user_arguments = {k: v for k, v in arguments.items() if not k.startswith("_")}
 
         # If arguments contain just "prompt", send as message content
@@ -853,17 +859,17 @@ class MessageService:
             input_data = user_arguments
             content = json.dumps(user_arguments)
 
-        # Create a new chat for this assistant call
+        # Create a new chat for this agent call
         try:
-            sub_chat = await self.create_chat_with_assistant(
-                assistant_id=str(assistant.id),
+            sub_chat = await self.create_chat_with_agent(
+                agent_id=str(agent.id),
                 user_id=user_id,
                 input_data=input_data,
                 group_id=str(chat.group_id) if chat.group_id else None,
-                name=f"Sub-chat: {assistant.name}"
+                name=f"Sub-chat: {agent.name}"
             )
 
-            # Send message to the assistant
+            # Send message to the agent
             # Output schema enforcement happens automatically in send_message
             response_message = await self.send_message(
                 chat_id=str(sub_chat.id),
@@ -873,15 +879,15 @@ class MessageService:
                 template_variables=input_data
             )
 
-            # Return the assistant's response
+            # Return the agent's response
             return {
-                "assistant_name": assistant.name,
+                "agent_name": agent.name,
                 "response": response_message.content,
                 "chat_id": str(sub_chat.id)
             }
 
         except Exception as e:
-            logger.error(f"Failed to execute assistant tool {tool_name}: {e}")
+            logger.error(f"Failed to execute agent tool {tool_name}: {e}")
             return {"error": str(e)}
 
     async def _handle_tool_calls(
@@ -929,7 +935,7 @@ class MessageService:
 
                 if tool_name in ["save_context", "retrieve_context", "update_context", "delete_context"]:
                     # Handle context tools
-                    result = await ContextTools.execute_tool(
+                    result = await StateTools.execute_tool(
                         db=self.db,
                         tool_name=tool_name,
                         arguments=arguments,
@@ -938,17 +944,7 @@ class MessageService:
                         group_id=str(chat.group_id) if chat and chat.group_id else None,
                         assistant_id=str(chat.assistant_id) if chat and chat.assistant_id else None
                     )
-                elif tool_name in ["explore_ontology", "query_ontology_records", "create_ontology_data_record", "update_ontology_data_record"]:
-                    # Handle ontology tools
-                    result = await OntologyTools.execute_tool(
-                        db=self.db,
-                        tool_name=tool_name,
-                        arguments=arguments,
-                        user_id=user_id,
-                        group_id=str(chat.group_id) if chat and chat.group_id else None,
-                        assistant_id=str(chat.assistant_id) if chat and chat.assistant_id else None,
-                        permissions=permissions
-                    )
+                # Ontology tools removed - extracted to sinas-ontology project
                 elif tool_name == "continue_execution":
                     # Handle execution continuation
                     result = await executor.execute_function(
@@ -960,34 +956,44 @@ class MessageService:
                         user_id=user_id,
                         resume_data=arguments["input"]
                     )
-                elif tool_name.startswith("call_assistant_"):
-                    # Handle assistant tool calls - get enabled assistants from chat's assistant
-                    enabled_assistant_ids = []
-                    if chat and chat.assistant_id:
-                        result_assistant = await self.db.execute(
-                            select(Assistant).where(Assistant.id == chat.assistant_id)
+                elif tool_name.startswith("call_agent_"):
+                    # Handle agent tool calls - get enabled agents from chat's agent
+                    enabled_agent_ids = []
+                    if chat and chat.agent_id:
+                        result_agent = await self.db.execute(
+                            select(Agent).where(Agent.id == chat.agent_id)
                         )
-                        chat_assistant = result_assistant.scalar_one_or_none()
-                        if chat_assistant:
-                            enabled_assistant_ids = chat_assistant.enabled_assistants or []
+                        chat_agent = result_agent.scalar_one_or_none()
+                        if chat_agent:
+                            enabled_agent_ids = chat_agent.enabled_agents or []
 
-                    result = await self._execute_assistant_tool(
+                    result = await self._execute_agent_tool(
                         chat=chat,
                         user_id=user_id,
                         user_token=user_token,
                         tool_name=tool_name,
                         arguments=arguments,
-                        enabled_assistant_ids=enabled_assistant_ids
+                        enabled_agent_ids=enabled_agent_ids
                     )
                 elif tool_name in mcp_client.tools:
                     result = await mcp_client.execute_tool(tool_name, arguments)
                 else:
-                    result = await self.webhook_converter.execute_webhook_tool(
+                    # Default: execute as function tool
+                    # Extract prefilled params from tool metadata (if available)
+                    prefilled_params = {}
+                    for tool in tools:
+                        if tool.get("function", {}).get("name") == tool_name:
+                            prefilled_params = tool.get("function", {}).get("_metadata", {}).get("prefilled_params", {})
+                            break
+
+                    result = await self.function_converter.execute_function_tool(
                         db=self.db,
                         tool_name=tool_name,
                         arguments=arguments,
+                        user_id=user_id,
                         user_token=user_token,
-                        chat_id=str(chat_id)
+                        chat_id=str(chat_id),
+                        prefilled_params=prefilled_params
                     )
 
                 result_content = json.dumps(result) if not isinstance(result, str) else result

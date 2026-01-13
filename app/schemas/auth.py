@@ -21,14 +21,21 @@ class OTPVerifyRequest(BaseModel):
 
 class OTPVerifyResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    expires_in: int  # Access token expiry in seconds
     user: "UserResponse"
+
+
+class ExternalAuthRequest(BaseModel):
+    """Request to exchange external OIDC token for SINAS JWT."""
+    token: str
 
 
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
-    is_active: bool
+    last_login_at: Optional[datetime]
     created_at: datetime
 
     class Config:
@@ -57,6 +64,23 @@ class APIKeyResponse(BaseModel):
 
 class APIKeyCreatedResponse(APIKeyResponse):
     api_key: str  # Only returned once upon creation
+
+
+class RefreshRequest(BaseModel):
+    """Request to refresh access token using refresh token."""
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    """Response with new access token."""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int  # Access token expiry in seconds
+
+
+class LogoutRequest(BaseModel):
+    """Request to logout (revoke refresh token)."""
+    refresh_token: str
 
 
 class CreateUserRequest(BaseModel):

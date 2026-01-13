@@ -8,9 +8,8 @@ import uuid
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
-    is_active: bool
+    last_login_at: Optional[datetime]
     created_at: datetime
-    last_login_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -21,4 +20,5 @@ class UserWithGroupsResponse(UserResponse):
 
 
 class UserUpdate(BaseModel):
-    is_active: Optional[bool] = None
+    # No fields to update for now - placeholder for future fields
+    pass

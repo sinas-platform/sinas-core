@@ -7,6 +7,7 @@ import uuid
 
 from app.core.database import get_db
 from app.core.auth import verify_jwt_or_api_key, set_permission_used
+from app.core.permissions import check_permission
 from app.models.webhook import Webhook
 from app.models.execution import TriggerType
 from app.services.execution_engine import executor
@@ -102,7 +103,18 @@ async def handle_webhook(
 
         try:
             user_id, email, permissions = await verify_jwt_or_api_key(auth_header, db)
-            set_permission_used(request, f"webhook.execute:{webhook.path}")
+
+            # Check namespace execute permission
+            execute_perm = f"sinas.functions.{webhook.function_namespace}.execute:own"
+            if not check_permission(permissions, execute_perm):
+                set_permission_used(request, execute_perm, has_perm=False)
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Not authorized to execute functions in namespace '{webhook.function_namespace}'"
+                )
+            set_permission_used(request, execute_perm)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
     else:
@@ -129,6 +141,7 @@ async def handle_webhook(
 
         # Execute the function
         result = await executor.execute_function(
+            function_namespace=webhook.function_namespace,
             function_name=webhook.function_name,
             input_data=final_input,
             execution_id=execution_id,

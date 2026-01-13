@@ -7,6 +7,7 @@ import uuid
 
 from app.core.database import get_db
 from app.core.auth import get_current_user_with_permissions, require_permission, set_permission_used
+from app.core.permissions import check_permission
 from app.models.user import Group, GroupMember, GroupPermission, User
 from app.schemas import (
     GroupCreate, GroupUpdate, GroupResponse,
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/groups", tags=["groups"])
 async def create_group(
     group_data: GroupCreate,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(require_permission("sinas.groups.create:own"))
+    user_id: str = Depends(require_permission("sinas.groups.post:own"))
 ):
     """Create a new group. Requires admin permission."""
 
@@ -36,7 +37,8 @@ async def create_group(
     group = Group(
         name=group_data.name,
         description=group_data.description,
-        email_domain=group_data.email_domain
+        email_domain=group_data.email_domain,
+        external_group_id=group_data.external_group_id
     )
 
     db.add(group)
@@ -69,11 +71,11 @@ async def list_groups(
     user_id, permissions = current_user_data
 
     # Admins can see all groups
-    if permissions.get("sinas.groups.read:all"):
-        set_permission_used(request, "sinas.groups.read:all")
+    if check_permission(permissions, "sinas.groups.get:all"):
+        set_permission_used(request, "sinas.groups.get:all")
         query = select(Group)
     else:
-        set_permission_used(request, "sinas.groups.read:own")
+        set_permission_used(request, "sinas.groups.get:own")
         # Regular users can only see groups they're a member of
         query = (
             select(Group)
@@ -93,50 +95,47 @@ async def list_groups(
     return groups
 
 
-@router.get("/{group_id}", response_model=GroupResponse)
+@router.get("/{name}", response_model=GroupResponse)
 async def get_group(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
 ):
     """Get a specific group."""
     user_id, permissions = current_user_data
 
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
 
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Check permissions
-    if permissions.get("sinas.groups.read:all"):
-        set_permission_used(request, "sinas.groups.read:all")
+    if check_permission(permissions,"sinas.groups.get:all"):
+        set_permission_used(request, "sinas.groups.get:all")
     else:
         # Check if user is a member
         membership_result = await db.execute(
             select(GroupMember).where(
                 and_(
-                    GroupMember.group_id == group_id,
+                    GroupMember.group_id == group.id,
                     GroupMember.user_id == uuid.UUID(user_id),
                     GroupMember.active == True
                 )
             )
         )
         if not membership_result.scalar_one_or_none():
-            set_permission_used(request, "sinas.groups.read:own", has_perm=False)
+            set_permission_used(request, "sinas.groups.get:own", has_perm=False)
             raise HTTPException(status_code=403, detail="Not authorized to view this group")
-        set_permission_used(request, "sinas.groups.read:own")
+        set_permission_used(request, "sinas.groups.get:own")
 
     return group
 
 
-@router.patch("/{group_id}", response_model=GroupResponse)
+@router.patch("/{name}", response_model=GroupResponse)
 async def update_group(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     group_data: GroupUpdate,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
@@ -144,20 +143,17 @@ async def update_group(
     """Update a group. Requires admin permission."""
     user_id, permissions = current_user_data
 
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
 
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Only admins can update groups
-    if not permissions.get("sinas.groups.update:all"):
-        set_permission_used(request, "sinas.groups.update:all", has_perm=False)
+    if not check_permission(permissions,"sinas.groups.put:all"):
+        set_permission_used(request, "sinas.groups.put:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to update groups")
 
-    set_permission_used(request, "sinas.groups.update:all")
+    set_permission_used(request, "sinas.groups.put:all")
 
     # Update fields
     if group_data.name is not None:
@@ -166,7 +162,7 @@ async def update_group(
             select(Group).where(
                 and_(
                     Group.name == group_data.name,
-                    Group.id != group_id
+                    Group.id != group.id
                 )
             )
         )
@@ -178,6 +174,8 @@ async def update_group(
         group.description = group_data.description
     if group_data.email_domain is not None:
         group.email_domain = group_data.email_domain
+    if group_data.external_group_id is not None:
+        group.external_group_id = group_data.external_group_id
 
     await db.commit()
     await db.refresh(group)
@@ -185,26 +183,23 @@ async def update_group(
     return group
 
 
-@router.delete("/{group_id}")
+@router.delete("/{name}")
 async def delete_group(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
 ):
     """Delete a group. Only admins can delete groups."""
     user_id, permissions = current_user_data
 
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
 
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Only admins can delete groups
-    if not permissions.get("sinas.groups.delete:all"):
+    if not check_permission(permissions,"sinas.groups.delete:all"):
         set_permission_used(request, "sinas.groups.delete:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to delete groups")
 
@@ -218,10 +213,10 @@ async def delete_group(
 
 # Group Membership Management
 
-@router.get("/{group_id}/members", response_model=List[GroupMemberResponse])
+@router.get("/{name}/members", response_model=List[GroupMemberResponse])
 async def list_group_members(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
 ):
@@ -229,34 +224,32 @@ async def list_group_members(
     user_id, permissions = current_user_data
 
     # Check if group exists
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Group not found")
+    group = await Group.get_by_name(db, name)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Admins can see all, users can only see groups they're in
-    if permissions.get("sinas.groups.read:all"):
-        set_permission_used(request, "sinas.groups.read:all")
+    if check_permission(permissions,"sinas.groups.get:all"):
+        set_permission_used(request, "sinas.groups.get:all")
     else:
         membership_check = await db.execute(
             select(GroupMember).where(
                 and_(
-                    GroupMember.group_id == group_id,
+                    GroupMember.group_id == group.id,
                     GroupMember.user_id == uuid.UUID(user_id),
                     GroupMember.active == True
                 )
             )
         )
         if not membership_check.scalar_one_or_none():
-            set_permission_used(request, "sinas.groups.read:own", has_perm=False)
+            set_permission_used(request, "sinas.groups.get:own", has_perm=False)
             raise HTTPException(status_code=403, detail="Not authorized to view this group")
-        set_permission_used(request, "sinas.groups.read:own")
+        set_permission_used(request, "sinas.groups.get:own")
 
     result = await db.execute(
         select(GroupMember).where(
             and_(
-                GroupMember.group_id == group_id,
+                GroupMember.group_id == group.id,
                 GroupMember.active == True
             )
         )
@@ -266,10 +259,10 @@ async def list_group_members(
     return members
 
 
-@router.post("/{group_id}/members", response_model=GroupMemberResponse)
+@router.post("/{name}/members", response_model=GroupMemberResponse)
 async def add_group_member(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     member_data: GroupMemberAdd,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
@@ -277,19 +270,16 @@ async def add_group_member(
     """Add a member to a group. Only admins can manage group members."""
     user_id, permissions = current_user_data
 
-    if not permissions.get("sinas.groups.manage_members:all"):
+    if not check_permission(permissions,"sinas.groups.manage_members:all"):
         set_permission_used(request, "sinas.groups.manage_members:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to manage group members")
 
     set_permission_used(request, "sinas.groups.manage_members:all")
 
     # Check if group exists
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Check if user exists
     result = await db.execute(
@@ -302,7 +292,7 @@ async def add_group_member(
     result = await db.execute(
         select(GroupMember).where(
             and_(
-                GroupMember.group_id == group_id,
+                GroupMember.group_id == group.id,
                 GroupMember.user_id == member_data.user_id
             )
         )
@@ -322,7 +312,7 @@ async def add_group_member(
 
     # Create new membership
     membership = GroupMember(
-        group_id=group_id,
+        group_id=group.id,
         user_id=member_data.user_id,
         role=member_data.role,
         active=True,
@@ -336,10 +326,10 @@ async def add_group_member(
     return membership
 
 
-@router.delete("/{group_id}/members/{user_id}")
+@router.delete("/{name}/members/{user_id}")
 async def remove_group_member(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
@@ -347,19 +337,16 @@ async def remove_group_member(
     """Remove a member from a group. Only admins can manage group members."""
     current_user_id, permissions = current_user_data
 
-    if not permissions.get("sinas.groups.manage_members:all"):
+    if not check_permission(permissions,"sinas.groups.manage_members:all"):
         set_permission_used(request, "sinas.groups.manage_members:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to manage group members")
 
     set_permission_used(request, "sinas.groups.manage_members:all")
 
     # Check if it's the Admins group
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     if group.name == "Admins":
         raise HTTPException(status_code=403, detail="Cannot remove members from Admins group")
@@ -367,7 +354,7 @@ async def remove_group_member(
     result = await db.execute(
         select(GroupMember).where(
             and_(
-                GroupMember.group_id == group_id,
+                GroupMember.group_id == group.id,
                 GroupMember.user_id == user_id,
                 GroupMember.active == True
             )
@@ -391,41 +378,39 @@ async def remove_group_member(
 
 # Group Permission Management
 
-@router.get("/{group_id}/permissions", response_model=List[GroupPermissionResponse])
+@router.get("/{name}/permissions", response_model=List[GroupPermissionResponse])
 async def list_group_permissions(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
 ):
     """List permissions for a group. Only admins can view permissions."""
     user_id, permissions = current_user_data
 
-    if not permissions.get("sinas.groups.manage_permissions:all"):
+    if not check_permission(permissions,"sinas.groups.manage_permissions:all"):
         set_permission_used(request, "sinas.groups.manage_permissions:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to view group permissions")
 
     set_permission_used(request, "sinas.groups.manage_permissions:all")
 
     # Check if group exists
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Group not found")
+    group = await Group.get_by_name(db, name)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     result = await db.execute(
-        select(GroupPermission).where(GroupPermission.group_id == group_id)
+        select(GroupPermission).where(GroupPermission.group_id == group.id)
     )
     group_permissions = result.scalars().all()
 
     return group_permissions
 
 
-@router.post("/{group_id}/permissions", response_model=GroupPermissionResponse)
+@router.post("/{name}/permissions", response_model=GroupPermissionResponse)
 async def set_group_permission(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     permission_data: GroupPermissionUpdate,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
@@ -433,19 +418,16 @@ async def set_group_permission(
     """Set a permission for a group. Only admins can manage permissions."""
     user_id, permissions = current_user_data
 
-    if not permissions.get("sinas.groups.manage_permissions:all"):
+    if not check_permission(permissions,"sinas.groups.manage_permissions:all"):
         set_permission_used(request, "sinas.groups.manage_permissions:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to manage group permissions")
 
     set_permission_used(request, "sinas.groups.manage_permissions:all")
 
     # Check if group exists
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     # Prevent modifying Admins group permissions
     if group.name == "Admins":
@@ -455,7 +437,7 @@ async def set_group_permission(
     result = await db.execute(
         select(GroupPermission).where(
             and_(
-                GroupPermission.group_id == group_id,
+                GroupPermission.group_id == group.id,
                 GroupPermission.permission_key == permission_data.permission_key
             )
         )
@@ -470,7 +452,7 @@ async def set_group_permission(
 
     # Create new permission
     new_permission = GroupPermission(
-        group_id=group_id,
+        group_id=group.id,
         permission_key=permission_data.permission_key,
         permission_value=permission_data.permission_value
     )
@@ -482,10 +464,10 @@ async def set_group_permission(
     return new_permission
 
 
-@router.delete("/{group_id}/permissions/{permission_key}")
+@router.delete("/{name}/permissions/{permission_key}")
 async def delete_group_permission(
     request: Request,
-    group_id: uuid.UUID,
+    name: str,
     permission_key: str,
     db: AsyncSession = Depends(get_db),
     current_user_data = Depends(get_current_user_with_permissions)
@@ -493,19 +475,16 @@ async def delete_group_permission(
     """Delete a permission from a group. Only admins can manage permissions."""
     user_id, permissions = current_user_data
 
-    if not permissions.get("sinas.groups.manage_permissions:all"):
+    if not check_permission(permissions,"sinas.groups.manage_permissions:all"):
         set_permission_used(request, "sinas.groups.manage_permissions:all", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to manage group permissions")
 
     set_permission_used(request, "sinas.groups.manage_permissions:all")
 
     # Check if it's the Admins group
-    result = await db.execute(
-        select(Group).where(Group.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+    group = await Group.get_by_name(db, name)
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=f"Group '{name}' not found")
 
     if group.name == "Admins":
         raise HTTPException(status_code=403, detail="Cannot modify Admins group permissions")
@@ -513,7 +492,7 @@ async def delete_group_permission(
     result = await db.execute(
         select(GroupPermission).where(
             and_(
-                GroupPermission.group_id == group_id,
+                GroupPermission.group_id == group.id,
                 GroupPermission.permission_key == permission_key
             )
         )

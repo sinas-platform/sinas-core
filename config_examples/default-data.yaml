@@ -1,0 +1,541 @@
+apiVersion: sinas.co/v1
+kind: SinasConfig
+metadata:
+  name: default-demo-data
+  description: Default data for development and demo environments
+  labels:
+    environment: development
+    purpose: demo
+
+spec:
+  # Datasources
+  datasources:
+    - name: SINAS Managed DB
+      type: postgres
+      connectionString: postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}_managed
+      defaultDatabase: ${DATABASE_NAME}_managed
+      defaultSchema: public
+      isReadOnly: false
+      groupName: Admins
+
+  # Ontology
+  ontology:
+    concepts:
+      - namespace: default
+        name: Customer
+        displayName: Customer
+        description: A customer in the CRM system
+        groupName: Admins
+        properties:
+          - name: id
+            displayName: ID
+            dataType: UUID
+            isIdentifier: true
+            isRequired: true
+
+          - name: full_name
+            displayName: Full Name
+            dataType: TEXT
+            isRequired: true
+            description: Full name of the customer
+
+          - name: email
+            displayName: Email
+            dataType: TEXT
+            isRequired: true
+            description: Email address
+
+          - name: phone
+            displayName: Phone
+            dataType: TEXT
+            isRequired: false
+            description: Phone number
+
+          - name: status
+            displayName: Status
+            dataType: TEXT
+            isRequired: false
+            description: Customer status (active, inactive, churned)
+            defaultValue: active
+
+          - name: created_date
+            displayName: Created Date
+            dataType: DATETIME
+            isRequired: false
+            description: When customer was created
+
+      - namespace: default
+        name: Contact
+        displayName: Contact
+        description: A contact person within a company
+        groupName: Admins
+        properties:
+          - name: id
+            displayName: ID
+            dataType: UUID
+            isIdentifier: true
+            isRequired: true
+
+          - name: first_name
+            displayName: First Name
+            dataType: TEXT
+            isRequired: true
+            description: First name
+
+          - name: last_name
+            displayName: Last Name
+            dataType: TEXT
+            isRequired: true
+            description: Last name
+
+          - name: email
+            displayName: Email
+            dataType: TEXT
+            isRequired: true
+            description: Email address
+
+          - name: title
+            displayName: Title
+            dataType: TEXT
+            isRequired: false
+            description: Job title
+
+          - name: company_id
+            displayName: Company ID
+            dataType: TEXT
+            isRequired: false
+            description: Associated company
+
+      - namespace: default
+        name: Company
+        displayName: Company
+        description: A company in the CRM system
+        groupName: Admins
+        properties:
+          - name: id
+            displayName: ID
+            dataType: UUID
+            isIdentifier: true
+            isRequired: true
+
+          - name: name
+            displayName: Name
+            dataType: TEXT
+            isRequired: true
+            description: Company name
+
+          - name: industry
+            displayName: Industry
+            dataType: TEXT
+            isRequired: false
+            description: Industry
+
+          - name: size
+            displayName: Size
+            dataType: INTEGER
+            isRequired: false
+            description: Number of employees
+
+          - name: website
+            displayName: Website
+            dataType: TEXT
+            isRequired: false
+            description: Company website
+
+          - name: founded_date
+            displayName: Founded Date
+            dataType: DATETIME
+            isRequired: false
+            description: Date company was founded
+
+      - namespace: default
+        name: Deal
+        displayName: Deal
+        description: Sales deals and opportunities
+        groupName: Admins
+        properties:
+          - name: id
+            displayName: ID
+            dataType: UUID
+            isIdentifier: true
+            isRequired: true
+
+          - name: title
+            displayName: Title
+            dataType: TEXT
+            isRequired: true
+            description: Deal title
+
+          - name: customer_id
+            displayName: Customer ID
+            dataType: TEXT
+            isRequired: false
+            description: Associated customer
+
+          - name: company_id
+            displayName: Company ID
+            dataType: TEXT
+            isRequired: false
+            description: Associated company
+
+          - name: amount_eur
+            displayName: Amount (EUR)
+            dataType: DECIMAL
+            isRequired: false
+            description: Deal value in EUR
+
+          - name: stage
+            displayName: Stage
+            dataType: TEXT
+            isRequired: false
+            description: Deal stage (prospect, qualified, proposal, negotiation, closed_won, closed_lost)
+
+          - name: probability
+            displayName: Probability
+            dataType: INTEGER
+            isRequired: false
+            description: Win probability (0-100)
+
+          - name: expected_close_date
+            displayName: Expected Close Date
+            dataType: DATETIME
+            isRequired: false
+            description: Expected closing date
+
+          - name: actual_close_date
+            displayName: Actual Close Date
+            dataType: DATETIME
+            isRequired: false
+            description: Actual closing date
+
+    tableMappings:
+      - conceptRef: default.Customer
+        datasourceName: SINAS Managed DB
+        tableName: crm_customers
+        columnMappings: {}
+        userOwnershipColumn: null
+        groupOwnershipColumn: null
+
+      - conceptRef: default.Contact
+        datasourceName: SINAS Managed DB
+        tableName: crm_contacts
+        columnMappings: {}
+        userOwnershipColumn: null
+        groupOwnershipColumn: null
+
+      - conceptRef: default.Company
+        datasourceName: SINAS Managed DB
+        tableName: crm_companys
+        columnMappings: {}
+        userOwnershipColumn: null
+        groupOwnershipColumn: null
+
+      - conceptRef: default.Deal
+        datasourceName: SINAS Managed DB
+        tableName: crm_deals
+        columnMappings: {}
+        userOwnershipColumn: null
+        groupOwnershipColumn: null
+
+  # Functions
+  functions:
+    - name: send_email
+      description: Send an email to a recipient (demo implementation)
+      groupName: Admins
+      code: |
+        def send_email(to: str, subject: str, body: str) -> dict:
+            """
+            Send an email to a recipient.
+
+            Args:
+                to: Email address of recipient
+                subject: Email subject line
+                body: Email body content
+
+            Returns:
+                Dictionary with status and message
+            """
+            # This is a mock implementation for demo purposes
+            print(f"📧 Sending email to {to}")
+            print(f"Subject: {subject}")
+            print(f"Body: {body}")
+
+            return {
+                "status": "sent",
+                "recipient": to,
+                "subject": subject,
+                "timestamp": "2024-01-01T00:00:00Z"
+            }
+      inputSchema:
+        type: object
+        properties:
+          to:
+            type: string
+            format: email
+            description: Recipient email address
+          subject:
+            type: string
+            description: Email subject
+          body:
+            type: string
+            description: Email body
+        required:
+          - to
+          - subject
+          - body
+      outputSchema:
+        type: object
+        properties:
+          status:
+            type: string
+          recipient:
+            type: string
+          subject:
+            type: string
+          timestamp:
+            type: string
+      requirements: []
+      tags:
+        - email
+        - communication
+
+    - name: create_customer
+      description: Create a new customer in the CRM system
+      groupName: Admins
+      code: |
+        def create_customer(full_name: str, email: str, phone: str = None, status: str = "active") -> dict:
+            """
+            Create a new customer in the CRM.
+
+            Args:
+                full_name: Customer's full name
+                email: Customer's email address
+                phone: Customer's phone number (optional)
+                status: Customer status (default: active)
+
+            Returns:
+                Dictionary with customer ID and details
+            """
+            import uuid
+            from datetime import datetime
+
+            customer_id = str(uuid.uuid4())
+            created_date = datetime.utcnow().isoformat()
+
+            # In real implementation, this would insert into database
+            print(f"✨ Creating customer: {full_name} ({email})")
+
+            return {
+                "id": customer_id,
+                "full_name": full_name,
+                "email": email,
+                "phone": phone,
+                "status": status,
+                "created_date": created_date
+            }
+      inputSchema:
+        type: object
+        properties:
+          full_name:
+            type: string
+            description: Customer's full name
+          email:
+            type: string
+            format: email
+            description: Customer's email address
+          phone:
+            type: string
+            description: Customer's phone number
+          status:
+            type: string
+            description: Customer status (active, inactive, churned)
+        required:
+          - full_name
+          - email
+      outputSchema:
+        type: object
+        properties:
+          id:
+            type: string
+          full_name:
+            type: string
+          email:
+            type: string
+          phone:
+            type: string
+          status:
+            type: string
+          created_date:
+            type: string
+      requirements: []
+      tags:
+        - crm
+        - customer
+
+  # Simple chunking function with 5000 char chunks and 1000 char overlap
+    - name: chunk_simple
+      groupName: Admins
+      description: Simple text chunking with 5000 character chunks and 1000 character overlap
+      code: |
+        async def chunk_simple(text: str, file_metadata: dict):
+            """
+            Simple chunking function that splits text into fixed-size chunks.
+
+            Args:
+                text: The markdown text to chunk
+                file_metadata: Dict with file_id, file_name, mime_type, collection_id
+
+            Returns:
+                {"chunks": [{"text": "chunk1", "metadata": {...}}, ...]}
+            """
+            chunk_size = 5000
+            chunk_overlap = 1000
+            chunks = []
+
+            # Handle empty text
+            if not text or not text.strip():
+                return {"chunks": []}
+
+            # Split into chunks with overlap
+            start = 0
+            text_length = len(text)
+
+            while start < text_length:
+                # Get chunk
+                end = start + chunk_size
+                chunk_text = text[start:end]
+
+                # Only add non-empty chunks
+                if chunk_text.strip():
+                    chunks.append({
+                        "text": chunk_text,
+                        "metadata": {
+                            "file_id": file_metadata.get("file_id"),
+                            "file_name": file_metadata.get("file_name"),
+                            "chunk_index": len(chunks)
+                        }
+                    })
+
+                # Move start position (with overlap for next chunk)
+                start = end - chunk_overlap
+
+                # Prevent infinite loop
+                if chunk_size <= chunk_overlap:
+                    break
+
+            return {"chunks": chunks}
+      inputSchema:
+        type: object
+        properties:
+          text:
+            type: string
+            description: The markdown text to chunk
+          file_metadata:
+            type: object
+            description: Metadata about the file being chunked
+            properties:
+              file_id:
+                type: string
+              file_name:
+                type: string
+              mime_type:
+                type: string
+              collection_id:
+                type: string
+        required:
+          - text
+          - file_metadata
+      outputSchema:
+        type: object
+        properties:
+          chunks:
+            type: array
+            items:
+              type: object
+              properties:
+                text:
+                  type: string
+                metadata:
+                  type: object
+      requirements: []
+      tags:
+        - chunking
+        - weaviate
+        - files
+
+
+  
+
+  # Assistants
+  assistants:
+    - name: CRM Assistant
+      description: Helps manage customers, contacts, companies, and deals
+      groupName: Admins
+      temperature: 0.7
+      systemPrompt: |
+        You are a helpful CRM assistant. You can help users manage customers,
+        contacts, companies, and deals in the CRM system.
+
+        Use the available tools to:
+        - Query customer, contact, company, and deal data
+        - Create new customers
+        - Send emails to customers
+
+        Always be professional and helpful.
+      enabledWebhooks: []
+      enabledMcpTools: []
+      enabledFunctions:
+        - send_email
+        - create_customer
+      contextNamespaces: []
+      ontologyNamespaces:
+        - default
+      ontologyConcepts:
+        - default.Customer
+        - default.Contact
+        - default.Company
+        - default.Deal
+
+    - name: General Assistant
+      description: General-purpose assistant with access to all tools
+      groupName: Admins
+      temperature: 0.7
+      systemPrompt: |
+        You are a helpful general-purpose assistant. You have access to various
+        tools and can help users with a wide range of tasks.
+
+        Use the available tools as needed to assist the user effectively.
+      enabledWebhooks: []
+      enabledMcpTools: []
+      enabledFunctions:
+        - send_email
+        - create_customer
+      contextNamespaces: []
+      ontologyNamespaces:
+        - default
+      ontologyConcepts:
+        - default.Customer
+        - default.Contact
+        - default.Company
+        - default.Deal
+
+    - name: Document Tagger
+      description: Extracts metadata tags from documents
+      groupName: Admins
+      temperature: 0.3
+      systemPrompt: |
+        You are a document analysis assistant. Your job is to analyze documents
+        and extract structured metadata tags.
+
+        When given a document, identify:
+        - document_type: The type of document (invoice, contract, report, etc.)
+        - topic: The main topic or subject
+        - summary: A brief 1-2 sentence summary
+
+        Return the tags in JSON format with keys matching the tag definition names.
+      enabledWebhooks: []
+      enabledMcpTools: []
+      enabledFunctions: []
+      contextNamespaces: []
+      ontologyNamespaces: []
+      ontologyConcepts: []
