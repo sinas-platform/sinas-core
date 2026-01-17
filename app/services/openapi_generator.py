@@ -52,7 +52,7 @@ async def generate_runtime_openapi(db: AsyncSession) -> Dict[str, Any]:
 
     for webhook in webhooks:
         # Load associated function to get schemas
-        function = await Function.get_by_name(db, webhook.function_name)
+        function = await Function.get_by_name(db, webhook.function_namespace, webhook.function_name)
 
         path = f"/webhooks/{webhook.path}"
         method = webhook.http_method.lower()
@@ -61,7 +61,7 @@ async def generate_runtime_openapi(db: AsyncSession) -> Dict[str, Any]:
             spec["paths"][path] = {}
 
         spec["paths"][path][method] = {
-            "summary": webhook.description or f"Execute {webhook.function_name}",
+            "summary": webhook.description or f"Execute {webhook.function_namespace}/{webhook.function_name}",
             "tags": ["runtime-webhooks"],
             "operationId": f"execute_webhook_{webhook.path.replace('/', '_')}_{method}",
             "requestBody": {

@@ -23,7 +23,6 @@ from app.schemas.config import (
     ConfigApplySummary,
     ResourceChange,
 )
-# from app.services.config_parser import ConfigParser  # Removed - ontology extracted
 from app.core.encryption import EncryptionService
 
 import logging
@@ -55,7 +54,9 @@ class ConfigApplyService:
 
     def _calculate_hash(self, data: Dict[str, Any]) -> str:
         """Calculate hash for change detection"""
-        return ConfigParser.calculate_resource_hash(data)
+        # Create stable JSON string and hash it
+        data_str = json.dumps(data, sort_keys=True)
+        return hashlib.sha256(data_str.encode()).hexdigest()
 
     def _track_change(self, action: str, resource_type: str, resource_name: str,
                       details: Optional[str] = None, changes: Optional[Dict[str, Any]] = None):
@@ -566,6 +567,27 @@ class ConfigApplyService:
             except Exception as e:
                 self.errors.append(f"Error applying function '{func_config.name}': {str(e)}")
 
+    def _normalize_function_references(self, function_names: List[str]) -> List[str]:
+        """
+        Normalize function names to namespace/name format.
+        If a function name doesn't contain '/', prepend 'default/' to it.
+
+        Args:
+            function_names: List of function names (may or may not include namespace)
+
+        Returns:
+            List of normalized function names in namespace/name format
+        """
+        normalized = []
+        for func_name in function_names:
+            if "/" not in func_name:
+                # No namespace specified, use default
+                normalized.append(f"default/{func_name}")
+            else:
+                # Already has namespace
+                normalized.append(func_name)
+        return normalized
+
     async def _apply_agents(self, agents, dry_run: bool):
         """Apply agent configurations"""
         for agent_config in agents:
@@ -577,6 +599,11 @@ class ConfigApplyService:
                 result = await self.db.execute(stmt)
                 existing = result.scalar_one_or_none()
 
+                # Normalize function references to namespace/name format
+                normalized_functions = self._normalize_function_references(
+                    agent_config.enabledFunctions
+                ) if agent_config.enabledFunctions else []
+
                 config_hash = self._calculate_hash({
                     "namespace": agent_config.namespace,
                     "name": agent_config.name,
@@ -586,7 +613,7 @@ class ConfigApplyService:
                     "temperature": agent_config.temperature,
                     "max_tokens": agent_config.maxTokens,
                     "system_prompt": agent_config.systemPrompt,
-                    "enabled_functions": sorted(agent_config.enabledFunctions) if agent_config.enabledFunctions else [],
+                    "enabled_functions": sorted(normalized_functions),
                     "function_parameters": agent_config.functionParameters if agent_config.functionParameters else {},
                     "enabled_mcp_tools": sorted(agent_config.enabledMcpTools) if agent_config.enabledMcpTools else [],
                     "enabled_agents": sorted(agent_config.enabledAgents) if agent_config.enabledAgents else [],
@@ -620,7 +647,7 @@ class ConfigApplyService:
                         existing.temperature = agent_config.temperature
                         existing.max_tokens = agent_config.maxTokens
                         existing.system_prompt = agent_config.systemPrompt
-                        existing.enabled_functions = agent_config.enabledFunctions
+                        existing.enabled_functions = normalized_functions
                         existing.function_parameters = agent_config.functionParameters
                         existing.enabled_mcp_tools = agent_config.enabledMcpTools
                         existing.enabled_agents = agent_config.enabledAgents
@@ -661,7 +688,7 @@ class ConfigApplyService:
                             temperature=agent_config.temperature,
                             max_tokens=agent_config.maxTokens,
                             system_prompt=agent_config.systemPrompt,
-                            enabled_functions=agent_config.enabledFunctions,
+                            enabled_functions=normalized_functions,
                             function_parameters=agent_config.functionParameters,
                             enabled_mcp_tools=agent_config.enabledMcpTools,
                             enabled_agents=agent_config.enabledAgents,

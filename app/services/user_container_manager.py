@@ -69,7 +69,7 @@ class UserContainerManager:
     ) -> Container:
         """Get existing container for user or create new one."""
         async with self.container_lock:
-            # Check if container exists and is running
+            # Check if container exists in our tracking dict
             if user_id in self.user_containers:
                 container_info = self.user_containers[user_id]
                 container = container_info['container']
@@ -91,6 +91,27 @@ class UserContainerManager:
                     # Container no longer exists
                     del self.user_containers[user_id]
 
+            # Check if a container with this name already exists in Docker
+            # (can happen after app restart when dict is cleared but containers still running)
+            container_name = f'sinas-user-{user_id}'
+            try:
+                existing = self.client.containers.get(container_name)
+                if existing.status == 'running':
+                    logger.info(f"Found existing running container for user {user_id}, reusing it")
+                    # Re-add to tracking dict
+                    self.user_containers[user_id] = {
+                        'container': existing,
+                        'last_used': time.time()
+                    }
+                    return existing
+                else:
+                    # Container exists but not running, remove it
+                    logger.info(f"Found stopped container for user {user_id}, removing it")
+                    existing.remove(force=True)
+            except NotFound:
+                # No existing container, proceed to create
+                pass
+
             # Create new container
             container = await self._create_container(user_id, db)
             self.user_containers[user_id] = {
@@ -103,13 +124,12 @@ class UserContainerManager:
         """Create a new container for user with functions loaded."""
         logger.info(f"Creating new container for user {user_id}")
 
-        # Get container image from settings
-        image = getattr(settings, 'function_container_image', 'python:3.11-slim')
+        # Get container image from settings (default to sinas-executor - minimal image with executor.py)
+        image = getattr(settings, 'function_container_image', 'sinas-executor')
 
-        # Create container with resource limits
+        # Create container with executor as main process
         container = self.client.containers.run(
             image,
-            command='python3 -u /app/executor.py',
             detach=True,
             name=f'sinas-user-{user_id}',
             mem_limit=f"{settings.max_function_memory}m",
@@ -175,30 +195,72 @@ class UserContainerManager:
                 'enabled_namespaces': func.enabled_namespaces or [],
             }
 
-        # Send functions to container via stdin
+        # Send functions to container via the same trigger mechanism as execution
         payload = {
             'action': 'load_functions',
             'functions': functions_data,
         }
 
-        # Write to container (executor.py will read this)
+        # Write to container and trigger the executor to process it
         try:
             exec_result = container.exec_run(
                 cmd=['python3', '-c', f'''
 import sys
 import json
+import time
 payload = {json.dumps(payload)}
-# Write to a file that executor.py will read
-with open("/tmp/functions.json", "w") as f:
+# Write execution request
+with open("/tmp/exec_request.json", "w") as f:
     json.dump(payload, f)
+# Trigger execution
+with open("/tmp/exec_trigger", "w") as f:
+    f.write("1")
+# Wait for result
+max_wait = 10
+start = time.time()
+while time.time() - start < max_wait:
+    try:
+        with open("/tmp/exec_result.json", "r") as f:
+            result = json.load(f)
+            # Clear files
+            import os
+            os.remove("/tmp/exec_result.json")
+            os.remove("/tmp/exec_trigger")
+            os.remove("/tmp/exec_request.json")
+            print(json.dumps(result))
+            sys.exit(0)
+    except FileNotFoundError:
+        time.sleep(0.1)
+        continue
+print(json.dumps({{"error": "Function load timeout"}}))
+sys.exit(1)
 '''],
-                detach=False,
+                demux=True,
             )
 
-            total_functions = sum(len(funcs) for funcs in functions_data.values())
-            logger.info(f"Loaded {total_functions} functions across {len(functions_data)} namespaces into container for user {user_id}")
+            stdout, stderr = exec_result.output
+            logger.debug(f"Function sync exec result: exit_code={exec_result.exit_code}, stdout={stdout}, stderr={stderr}")
+
+            if exec_result.exit_code == 0:
+                if stdout:
+                    try:
+                        result = json.loads(stdout.decode())
+                        total_functions = sum(len(funcs) for funcs in functions_data.values())
+                        logger.info(f"Loaded {total_functions} functions across {len(functions_data)} namespaces into container for user {user_id}")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing function sync result: {e}, stdout={stdout}")
+                else:
+                    # Exit code 0 but no stdout - functions might have loaded successfully
+                    # Check stderr for any info
+                    total_functions = sum(len(funcs) for funcs in functions_data.values())
+                    logger.info(f"Function sync completed (no output captured), attempted to load {total_functions} functions")
+            else:
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                logger.error(f"Error syncing functions to container: {error_msg}")
         except Exception as e:
+            import traceback
             logger.error(f"Error syncing functions to container: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def execute_function(
         self,

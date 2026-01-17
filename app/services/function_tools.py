@@ -1,5 +1,7 @@
 """Function-to-tool converter for LLM tool calling."""
 import json
+import uuid
+import logging
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy import select
@@ -7,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.function import Function
 from app.services.template_renderer import render_function_parameters
+
+logger = logging.getLogger(__name__)
 
 
 class FunctionToolConverter:
@@ -130,10 +134,14 @@ class FunctionToolConverter:
             "prefilled_params": prefilled_params or {}
         }
 
+        # Convert namespace/name to namespace__name for LLM compatibility
+        # OpenAI function names cannot contain "/" (must match ^[a-zA-Z0-9_-]{1,64}$)
+        llm_tool_name = f"{function.namespace}__{function.name}"
+
         return {
             "type": "function",
             "function": {
-                "name": f"{function.namespace}/{function.name}",
+                "name": llm_tool_name,
                 "description": description,
                 "parameters": parameters,
                 "_metadata": metadata  # Internal use for execution
@@ -155,7 +163,7 @@ class FunctionToolConverter:
 
         Args:
             db: Database session
-            tool_name: Function name as "namespace/name"
+            tool_name: Function name as "namespace__name" or "namespace/name"
             arguments: Tool arguments from LLM
             user_id: User ID
             user_token: User's JWT or API key for authentication
@@ -168,6 +176,11 @@ class FunctionToolConverter:
         Raises:
             ValueError: If function not found
         """
+        # Convert namespace__name to namespace/name if needed
+        # (OpenAI-compatible APIs don't allow "/" in function names)
+        if "__" in tool_name and "/" not in tool_name:
+            tool_name = tool_name.replace("__", "/", 1)
+
         # Parse namespace/name
         if "/" not in tool_name:
             raise ValueError(f"Invalid function name format: {tool_name}")
@@ -185,28 +198,32 @@ class FunctionToolConverter:
         final_input = {**(prefilled_params or {}), **arguments}
 
         # Execute function directly via execution engine
-        from app.services.execution_engine import executor
+        from app.services.execution_engine import executor, FunctionExecutionError
+        from app.models.execution import TriggerType
 
-        result = await executor.execute_function(
-            function_name=name,
-            namespace=namespace,
-            input_data=final_input,
-            trigger_type="agent",
-            trigger_id=chat_id or "unknown",
-            user_id=user_id
-        )
+        # Generate execution ID
+        execution_id = str(uuid.uuid4())
 
-        # Return execution result
-        if result.get("status") == "completed":
-            return result.get("output_data", {})
-        elif result.get("status") == "failed":
+        try:
+            result = await executor.execute_function(
+                function_namespace=namespace,
+                function_name=name,
+                input_data=final_input,
+                execution_id=execution_id,
+                trigger_type=TriggerType.AGENT.value,
+                trigger_id=chat_id or "unknown",
+                user_id=user_id,
+                chat_id=chat_id
+            )
+
+            # Return execution result (raw value on success)
+            logger.debug(f"Function execution succeeded: {result}")
+            return result
+
+        except FunctionExecutionError as e:
+            # Function execution failed - return error
+            logger.error(f"Function execution failed: {e}")
             return {
                 "error": "Function execution failed",
-                "message": result.get("error_message", "Unknown error")
-            }
-        else:
-            # Unexpected status
-            return {
-                "error": "Unexpected execution status",
-                "status": result.get("status")
+                "message": str(e)
             }

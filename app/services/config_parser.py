@@ -88,8 +88,15 @@ class ConfigParser:
 
         # Collect all group names from config
         group_names = {g["name"] for g in spec.get("groups", [])}
-        function_names = {f["name"] for f in spec.get("functions", [])}
-        agent_names = {a["name"] for a in spec.get("agents", [])}
+        # Functions and agents use namespace/name format
+        function_names = {
+            f"{f.get('namespace', 'default')}/{f['name']}"
+            for f in spec.get("functions", [])
+        }
+        agent_names = {
+            f"{a.get('namespace', 'default')}/{a['name']}"
+            for a in spec.get("agents", [])
+        }
         llm_provider_names = {p["name"] for p in spec.get("llmProviders", [])}
         mcp_server_names = {s["name"] for s in spec.get("mcpServers", [])}
 
@@ -111,11 +118,12 @@ class ConfigParser:
             result = await db.execute(select(Group.name))
             db_group_names = {name for (name,) in result.fetchall()}
 
-            result = await db.execute(select(Function.name))
-            db_function_names = {name for (name,) in result.fetchall()}
+            # Functions and agents use namespace/name format
+            result = await db.execute(select(Function.namespace, Function.name))
+            db_function_names = {f"{namespace}/{name}" for (namespace, name) in result.fetchall()}
 
-            result = await db.execute(select(Agent.name))
-            db_agent_names = {name for (name,) in result.fetchall()}
+            result = await db.execute(select(Agent.namespace, Agent.name))
+            db_agent_names = {f"{namespace}/{name}" for (namespace, name) in result.fetchall()}
 
             result = await db.execute(select(LLMProvider.name))
             db_llm_provider_names = {name for (name,) in result.fetchall()}
@@ -165,11 +173,13 @@ class ConfigParser:
 
             # Validate enabled agent references (for agent calling)
             if "enabledAgents" in agent and agent["enabledAgents"]:
-                for agent_name in agent["enabledAgents"]:
-                    if agent_name not in all_agent_names and agent_name != agent["name"]:
+                # Build current agent's full name for self-reference check
+                current_agent_ref = f"{agent.get('namespace', 'default')}/{agent['name']}"
+                for agent_ref in agent["enabledAgents"]:
+                    if agent_ref not in all_agent_names and agent_ref != current_agent_ref:
                         errors.append(ConfigValidationError(
                             path=f"spec.agents[{i}].enabledAgents",
-                            message=f"Referenced agent '{agent_name}' not defined"
+                            message=f"Referenced agent '{agent_ref}' not defined"
                         ))
 
             # Validate MCP tool references
@@ -191,10 +201,14 @@ class ConfigParser:
                     path=f"spec.webhooks[{i}].groupName",
                     message=f"Referenced group '{webhook['groupName']}' not defined"
                 ))
-            if webhook["functionName"] not in all_function_names:
+            # Build function reference as namespace/name
+            func_namespace = webhook.get("functionNamespace", "default")
+            func_name = webhook["functionName"]
+            func_ref = f"{func_namespace}/{func_name}"
+            if func_ref not in all_function_names:
                 errors.append(ConfigValidationError(
                     path=f"spec.webhooks[{i}].functionName",
-                    message=f"Referenced function '{webhook['functionName']}' not defined"
+                    message=f"Referenced function '{func_ref}' not defined"
                 ))
 
         # Validate schedule references
@@ -204,10 +218,14 @@ class ConfigParser:
                     path=f"spec.schedules[{i}].groupName",
                     message=f"Referenced group '{schedule['groupName']}' not defined"
                 ))
-            if schedule["functionName"] not in all_function_names:
+            # Build function reference as namespace/name
+            func_namespace = schedule.get("functionNamespace", "default")
+            func_name = schedule["functionName"]
+            func_ref = f"{func_namespace}/{func_name}"
+            if func_ref not in all_function_names:
                 errors.append(ConfigValidationError(
                     path=f"spec.schedules[{i}].functionName",
-                    message=f"Referenced function '{schedule['functionName']}' not defined"
+                    message=f"Referenced function '{func_ref}' not defined"
                 ))
 
         # Validate MCP server references

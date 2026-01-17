@@ -58,7 +58,20 @@ async def validate_config(
         strict=False  # Don't error on missing env vars for validation
     )
 
-    return validation
+    # Convert ConfigValidation to ConfigValidateResponse
+    from app.schemas.config import ValidationError as SchemaValidationError
+
+    return ConfigValidateResponse(
+        valid=validation.is_valid,
+        errors=[
+            SchemaValidationError(path=e.path, message=e.message)
+            for e in validation.errors
+        ],
+        warnings=[
+            SchemaValidationError(path="", message=w)
+            for w in validation.warnings
+        ]
+    )
 
 
 @router.post("/apply", response_model=ConfigApplyResponse)
@@ -96,7 +109,7 @@ async def apply_config(
             strict=not apply_request.force  # Allow missing env vars if force=True
         )
 
-        if not validation.valid and not apply_request.force:
+        if not validation.is_valid and not apply_request.force:
             # Return validation errors without applying
             return ConfigApplyResponse(
                 success=False,

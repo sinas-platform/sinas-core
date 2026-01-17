@@ -6,7 +6,7 @@ Run the automated installer on a fresh Ubuntu 22.04+ VPS:
 
 ```bash
 # Clone repository
-git clone https://github.com/sinas-platform/sinas-agents.git
+git clone https://github.com/sinas-platform/sinas-core.git
 cd sinas-agents
 
 # Run installer

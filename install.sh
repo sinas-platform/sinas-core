@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}"
 echo "╔════════════════════════════════════════╗"
-echo "║   SINAS Agent Platform Installer      ║"
+echo "║     SINAS Core Platform Installer      ║"
 echo "╚════════════════════════════════════════╝"
 echo -e "${NC}"
 

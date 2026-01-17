@@ -15,6 +15,8 @@ class ContainerExecutor:
             '__builtins__': __builtins__,
             'json': json,
         }
+        # Map from "namespace/name" to actual function name in code
+        self.function_map = {}
         # Import common modules
         try:
             import datetime
@@ -25,17 +27,25 @@ class ContainerExecutor:
             pass
 
     def load_functions(self, functions_data: Dict[str, Dict[str, Any]]):
-        """Load functions into namespace."""
-        for name, func_data in functions_data.items():
-            try:
-                code = func_data['code']
-                # Compile and execute function in namespace
-                compiled_code = compile(code, f'<function:{name}>', 'exec')
-                exec(compiled_code, self.namespace)
-                print(f"Loaded function: {name}", file=sys.stderr)
-            except Exception as e:
-                print(f"Error loading function {name}: {e}", file=sys.stderr)
-                traceback.print_exc(file=sys.stderr)
+        """Load functions into namespace, organized by namespace."""
+        for namespace, functions in functions_data.items():
+            for name, func_data in functions.items():
+                try:
+                    code = func_data['code']
+                    full_name = f"{namespace}/{name}"
+
+                    # Compile and execute function in namespace
+                    compiled_code = compile(code, f'<function:{full_name}>', 'exec')
+                    exec(compiled_code, self.namespace)
+
+                    # Store mapping from "namespace/name" to actual function name
+                    # The actual function name is extracted from the code (usually just 'name')
+                    self.function_map[full_name] = name
+
+                    print(f"Loaded function: {full_name} -> {name}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error loading function {namespace}/{name}: {e}", file=sys.stderr)
+                    traceback.print_exc(file=sys.stderr)
 
     def execute_function(
         self,
@@ -45,13 +55,16 @@ class ContainerExecutor:
     ) -> Dict[str, Any]:
         """Execute a function from the namespace."""
         try:
-            if function_name not in self.namespace:
+            # Map from "namespace/name" to actual function name in code
+            actual_name = self.function_map.get(function_name, function_name)
+
+            if actual_name not in self.namespace:
                 return {
-                    'error': f"Function '{function_name}' not found in namespace",
+                    'error': f"Function '{function_name}' not found in namespace (mapped to '{actual_name}')",
                     'execution_id': execution_id,
                 }
 
-            func = self.namespace[function_name]
+            func = self.namespace[actual_name]
 
             # Execute function
             start_time = time.time()
@@ -104,8 +117,13 @@ class ContainerExecutor:
 
                     if action == 'execute':
                         # Execute function
+                        # Build full function name from namespace + name
+                        function_namespace = request.get('function_namespace', 'default')
+                        function_name = request['function_name']
+                        full_function_name = f"{function_namespace}/{function_name}"
+
                         result = self.execute_function(
-                            request['function_name'],
+                            full_function_name,
                             request['input_data'],
                             request['execution_id']
                         )

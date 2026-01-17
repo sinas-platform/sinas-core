@@ -9,8 +9,9 @@ from .base import Base, uuid_pk
 
 
 class TriggerType(str, enum.Enum):
-    WEBHOOK = "webhook"
-    SCHEDULE = "schedule"
+    WEBHOOK = "WEBHOOK"
+    SCHEDULE = "SCHEDULE"
+    AGENT = "AGENT"  # Triggered by agent/chat tool call
 
 
 class ExecutionStatus(str, enum.Enum):

@@ -216,6 +216,7 @@ class ConfigExportService:
 
             func_dict = {
                 "name": func.name,
+                "namespace": func.namespace,
                 "description": func.description,
                 "code": func.code,
                 "inputSchema": func.input_schema,
@@ -223,7 +224,6 @@ class ConfigExportService:
                 "groupName": group.name if group else (default_group.name if default_group else "Users"),
                 "requirements": func.requirements if func.requirements else None,
                 "enabledNamespaces": func.enabled_namespaces if func.enabled_namespaces else None,
-                "tags": func.tags if func.tags else None,
             }
 
             exported.append(_remove_none_values(func_dict))
@@ -261,6 +261,7 @@ class ConfigExportService:
 
             agent_dict = {
                 "name": agent.name,
+                "namespace": agent.namespace,
                 "description": agent.description,
                 "model": agent.model,
                 "groupName": group.name if group else (default_group.name if default_group else "Users"),
@@ -271,6 +272,7 @@ class ConfigExportService:
                 "enabledFunctions": agent.enabled_functions if agent.enabled_functions else None,
                 "functionParameters": agent.function_parameters if agent.function_parameters else None,
                 "enabledMcpTools": agent.enabled_mcp_tools if agent.enabled_mcp_tools else None,
+                "enabledAgents": agent.enabled_agents if agent.enabled_agents else None,
                 "stateNamespacesReadonly": agent.state_namespaces_readonly if agent.state_namespaces_readonly else None,
                 "stateNamespacesReadwrite": agent.state_namespaces_readwrite if agent.state_namespaces_readwrite else None,
             }
@@ -309,6 +311,7 @@ class ConfigExportService:
             if function:
                 webhook_dict = {
                     "path": webhook.path,
+                    "functionNamespace": function.namespace,
                     "functionName": function.name,
                     "httpMethod": webhook.http_method,
                     "requiresAuth": webhook.requires_auth,
@@ -351,6 +354,7 @@ class ConfigExportService:
             if function:
                 schedule_dict = {
                     "name": schedule.name,
+                    "functionNamespace": function.namespace,
                     "functionName": function.name,
                     "cronExpression": schedule.cron_expression,
                     "isActive": schedule.is_active,
