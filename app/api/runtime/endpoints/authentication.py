@@ -42,8 +42,22 @@ async def login(
     """
     Initiate login by sending OTP to email.
 
-    Creates user if doesn't exist and assigns to "Users" group.
+    Creates user if doesn't exist (when auto_provision_users=true).
+    Fails fast if user doesn't exist and auto-provisioning is disabled.
     """
+    # Check if user exists when auto-provisioning is disabled
+    if not settings.auto_provision_users:
+        from app.core.auth import normalize_email
+        result = await db.execute(
+            select(User).where(User.email == normalize_email(request.email))
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not found and auto-provisioning is disabled"
+            )
+
     # Create OTP session and send email
     try:
         otp_session = await create_otp_session(db, request.email)

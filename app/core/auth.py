@@ -135,6 +135,9 @@ async def get_or_create_user(
 
     Returns:
         User object
+
+    Raises:
+        HTTPException: If user doesn't exist and auto-provisioning is disabled
     """
     normalized_email = normalize_email(email)
 
@@ -146,6 +149,13 @@ async def get_or_create_user(
 
     if user:
         return user
+
+    # Check if auto-provisioning is enabled
+    if not settings.auto_provision_users:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not found and auto-provisioning is disabled"
+        )
 
     # Create new user
     user = User(email=normalized_email)
