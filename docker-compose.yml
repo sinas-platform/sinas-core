@@ -104,8 +104,6 @@ services:
     image: caddy:2-alpine
     container_name: sinas-caddy
     restart: unless-stopped
-    profiles:
-      - production
     ports:
       - "80:80"
       - "443:443"
