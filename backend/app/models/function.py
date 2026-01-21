@@ -25,6 +25,8 @@ class Function(Base):
     requirements: Mapped[List[str]] = mapped_column(JSON, default=list)
     enabled_namespaces: Mapped[List[str]] = mapped_column(JSON, default=list)  # Namespaces this function can call (empty = own namespace only)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    shared_pool: Mapped[bool] = mapped_column(Boolean, default=False)  # If True, use shared worker pool instead of isolated container
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)  # If True, LLM must ask user before calling
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 

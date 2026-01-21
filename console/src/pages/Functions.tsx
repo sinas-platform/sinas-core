@@ -108,7 +108,19 @@ export function Functions() {
                 <div className="flex items-center flex-1">
                   <Code className="w-8 h-8 text-primary-600 mr-3 flex-shrink-0" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">{func.name}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-gray-900">{func.name}</h3>
+                      {func.shared_pool && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          Shared Pool
+                        </span>
+                      )}
+                      {func.requires_approval && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Requires Approval
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-600">{func.description || 'No description'}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       Created {new Date(func.created_at).toLocaleDateString()}

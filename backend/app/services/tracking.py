@@ -32,7 +32,6 @@ class ExecutionTracker:
 
         # Create step execution record
         step = StepExecution(
-            user_id=self.user_id,
             execution_id=self.execution_id,
             function_name=function_name,
             status=ExecutionStatus.RUNNING,

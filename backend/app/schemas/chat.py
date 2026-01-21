@@ -78,3 +78,15 @@ class MessageSendRequest(BaseModel):
 
 class ChatWithMessages(ChatResponse):
     messages: List[MessageResponse]
+
+
+class ToolApprovalRequest(BaseModel):
+    """Approve or reject a tool call that requires user approval."""
+    approved: bool
+
+
+class ToolApprovalResponse(BaseModel):
+    """Response from approving/rejecting a tool call."""
+    status: str  # "approved", "rejected"
+    tool_call_id: str
+    message: Optional[str] = None

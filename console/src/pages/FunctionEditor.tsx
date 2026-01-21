@@ -30,6 +30,8 @@ export function FunctionEditor() {
     output_schema: '{\n  "type": "object",\n  "properties": {\n    "result": {\n      "type": "string",\n      "description": "Output result"\n    }\n  },\n  "required": ["result"]\n}',
     requirements: [] as string[],
     enabled_namespaces: [] as string[],
+    shared_pool: false,
+    requires_approval: false,
   });
 
   const [requirementInput, setRequirementInput] = useState('');
@@ -58,6 +60,8 @@ export function FunctionEditor() {
         output_schema: JSON.stringify(func.output_schema || {}, null, 2),
         requirements: func.requirements || [],
         enabled_namespaces: func.enabled_namespaces || [],
+        shared_pool: func.shared_pool || false,
+        requires_approval: func.requires_approval || false,
       });
     }
   }, [func, isNew]);
@@ -206,6 +210,19 @@ export function FunctionEditor() {
         </div>
       </div>
 
+      {/* Success/Error Messages */}
+      {saveMutation.isError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          Failed to save function. Please check your code and JSON schemas.
+        </div>
+      )}
+
+      {saveMutation.isSuccess && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+          Function saved successfully!
+        </div>
+      )}
+
       <form onSubmit={handleSave} className="space-y-6">
         {/* Basic Info */}
         <div className="card">
@@ -263,6 +280,42 @@ export function FunctionEditor() {
               <p className="text-xs text-gray-500 mt-1">
                 Assign to a group to share with team members
               </p>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900">Execution Settings</h3>
+
+              <div className="flex items-start">
+                <input
+                  type="checkbox"
+                  id="shared_pool"
+                  checked={formData.shared_pool}
+                  onChange={(e) => setFormData({ ...formData, shared_pool: e.target.checked })}
+                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <label htmlFor="shared_pool" className="ml-3">
+                  <span className="block text-sm font-medium text-gray-700">Use Shared Worker Pool</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    Run in shared worker pool instead of isolated container. More efficient for trusted functions with high call frequency.
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex items-start">
+                <input
+                  type="checkbox"
+                  id="requires_approval"
+                  checked={formData.requires_approval}
+                  onChange={(e) => setFormData({ ...formData, requires_approval: e.target.checked })}
+                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <label htmlFor="requires_approval" className="ml-3">
+                  <span className="block text-sm font-medium text-gray-700">Require Approval Before Execution</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    LLM must ask user for approval before calling this function. Use for dangerous operations (delete, send email, etc.).
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -447,18 +500,6 @@ export function FunctionEditor() {
             </div>
           )}
         </div>
-
-        {saveMutation.isError && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            Failed to save function. Please check your code and JSON schemas.
-          </div>
-        )}
-
-        {saveMutation.isSuccess && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-            Function saved successfully!
-          </div>
-        )}
       </form>
     </div>
   );

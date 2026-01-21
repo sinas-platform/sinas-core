@@ -11,6 +11,8 @@ import jsonschema
 from app.models import Chat, Message, Agent
 from app.models.llm_provider import LLMProvider
 from app.models.execution import Execution, ExecutionStatus
+from app.models.function import Function
+from app.models.pending_approval import PendingToolApproval
 from app.providers import create_provider
 from app.services.function_tools import FunctionToolConverter
 from app.services.state_tools import StateTools
@@ -333,6 +335,18 @@ class MessageService:
 
         # Handle tool calls if present
         if response.get("tool_calls"):
+            # Check if any functions require approval
+            for tool_call in response["tool_calls"]:
+                tool_name = tool_call["function"]["name"]
+                namespace, name = self._parse_function_name(tool_name)
+                if namespace and name:
+                    function = await Function.get_by_name(self.db, namespace, name)
+                    if function and function.requires_approval:
+                        raise ValueError(
+                            f"Function {namespace}/{name} requires user approval. "
+                            "Please use streaming mode to handle approval flow."
+                        )
+
             return await self._handle_tool_calls(
                 chat_id=chat_id,
                 user_id=user_id,
@@ -483,10 +497,49 @@ class MessageService:
         )
         self.db.add(assistant_message)
         await self.db.commit()
+        await self.db.refresh(assistant_message)
 
         # Handle tool calls if present
         if tool_calls:
-            # Execute tools and get final response (but don't yield it since streaming is done)
+            # Check if any functions require approval
+            approval_needed = await self._check_approval_requirements(
+                tool_calls=tool_calls,
+                chat_id=chat_id,
+                user_id=user_id,
+                message_id=str(assistant_message.id),
+                messages=messages,
+                provider=provider_name,
+                model=final_model,
+                temperature=final_temperature,
+                max_tokens=max_tokens
+            )
+
+            if approval_needed:
+                # Yield approval_required events
+                for tool_call in tool_calls:
+                    tool_name = tool_call["function"]["name"]
+                    arguments_str = tool_call["function"]["arguments"]
+
+                    # Parse namespace/name from tool_name
+                    namespace, name = self._parse_function_name(tool_name)
+                    if not namespace or not name:
+                        continue
+
+                    # Check if this specific function requires approval
+                    function = await Function.get_by_name(self.db, namespace, name)
+                    if function and function.requires_approval:
+                        yield {
+                            "type": "approval_required",
+                            "tool_call_id": tool_call["id"],
+                            "function_namespace": namespace,
+                            "function_name": name,
+                            "arguments": json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str
+                        }
+
+                # PAUSE - don't execute tools yet, wait for approval
+                return
+
+            # No approval needed - execute tools immediately
             await self._handle_tool_calls(
                 chat_id=chat_id,
                 user_id=user_id,
@@ -499,6 +552,96 @@ class MessageService:
                 max_tokens=max_tokens,
                 tools=tools
             )
+
+    def _parse_function_name(self, tool_name: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Parse namespace and name from tool_name.
+
+        Handles both namespace__name (LLM format) and namespace/name formats.
+
+        Returns:
+            Tuple of (namespace, name) or (None, None) if not a function
+        """
+        # Skip non-function tools
+        if tool_name in ["save_context", "retrieve_context", "update_context", "delete_context",
+                         "continue_execution"] or tool_name.startswith("call_agent_"):
+            return None, None
+
+        # Convert namespace__name to namespace/name if needed
+        if "__" in tool_name and "/" not in tool_name:
+            tool_name = tool_name.replace("__", "/", 1)
+
+        # Parse namespace/name
+        if "/" not in tool_name:
+            return None, None
+
+        namespace, name = tool_name.split("/", 1)
+        return namespace, name
+
+    async def _check_approval_requirements(
+        self,
+        tool_calls: List[Dict[str, Any]],
+        chat_id: str,
+        user_id: str,
+        message_id: str,
+        messages: List[Dict[str, Any]],
+        provider: Optional[str],
+        model: Optional[str],
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> bool:
+        """
+        Check if any tool calls require user approval before execution.
+
+        If approval is needed, creates PendingToolApproval records.
+
+        Returns:
+            True if any tool calls require approval, False otherwise
+        """
+        requires_approval = False
+
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            arguments_str = tool_call["function"]["arguments"]
+
+            # Parse namespace/name from tool_name
+            namespace, name = self._parse_function_name(tool_name)
+            if not namespace or not name:
+                # Not a function tool, skip
+                continue
+
+            # Load function to check requires_approval flag
+            function = await Function.get_by_name(self.db, namespace, name)
+            if not function or not function.requires_approval:
+                continue
+
+            # This function requires approval
+            requires_approval = True
+
+            # Create PendingToolApproval record
+            pending_approval = PendingToolApproval(
+                chat_id=chat_id,
+                message_id=message_id,
+                user_id=user_id,
+                tool_call_id=tool_call["id"],
+                function_namespace=namespace,
+                function_name=name,
+                arguments=json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str,
+                all_tool_calls=tool_calls,
+                conversation_context={
+                    "provider": provider,
+                    "model": model,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "messages": messages
+                }
+            )
+            self.db.add(pending_approval)
+
+        if requires_approval:
+            await self.db.commit()
+
+        return requires_approval
 
     async def _build_conversation_history(
         self,

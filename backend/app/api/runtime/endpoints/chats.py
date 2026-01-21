@@ -14,8 +14,9 @@ from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.models.agent import Agent
 from app.models.chat import Chat
 from app.models import Message
+from app.models.pending_approval import PendingToolApproval
 from app.services.message_service import MessageService
-from app.schemas.chat import AgentChatCreateRequest, MessageSendRequest, ChatResponse, MessageResponse, ChatUpdate, ChatWithMessages
+from app.schemas.chat import AgentChatCreateRequest, MessageSendRequest, ChatResponse, MessageResponse, ChatUpdate, ChatWithMessages, ToolApprovalRequest, ToolApprovalResponse
 
 router = APIRouter()
 
@@ -203,6 +204,99 @@ async def stream_message(
             }
 
     return EventSourceResponse(event_generator())
+
+
+@router.post("/chats/{chat_id}/approve-tool/{tool_call_id}", response_model=ToolApprovalResponse)
+async def approve_tool_call(
+    chat_id: str,
+    tool_call_id: str,
+    request: ToolApprovalRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_data: tuple = Depends(get_current_user_with_permissions)
+):
+    """
+    Approve or reject a tool call that requires user approval.
+
+    When a function with requires_approval=True is called by the LLM,
+    execution pauses and an approval_required event is yielded.
+    This endpoint allows the user to approve or reject the execution.
+
+    - Loads pending approval by tool_call_id
+    - Verifies chat ownership
+    - Updates approval status
+    - If approved, resumes execution
+    - Returns result
+    """
+    user_id, permissions = current_user_data
+
+    # Load chat
+    chat = await db.get(Chat, chat_id)
+    if not chat:
+        raise HTTPException(404, "Chat not found")
+
+    # Verify ownership
+    if str(chat.user_id) != user_id:
+        set_permission_used(http_request, "sinas.chats.write:own", has_perm=False)
+        raise HTTPException(403, "Not authorized to approve tools in this chat")
+
+    set_permission_used(http_request, "sinas.chats.write:own")
+
+    # Load pending approval
+    result = await db.execute(
+        select(PendingToolApproval).where(
+            PendingToolApproval.tool_call_id == tool_call_id,
+            PendingToolApproval.chat_id == chat_id,
+            PendingToolApproval.approved == None  # Only pending approvals
+        )
+    )
+    pending_approval = result.scalar_one_or_none()
+
+    if not pending_approval:
+        raise HTTPException(404, "Pending approval not found or already processed")
+
+    # Update approval status
+    pending_approval.approved = request.approved
+    await db.commit()
+
+    if not request.approved:
+        # Rejected - don't execute
+        return ToolApprovalResponse(
+            status="rejected",
+            tool_call_id=tool_call_id,
+            message=f"Tool call {pending_approval.function_namespace}/{pending_approval.function_name} was rejected"
+        )
+
+    # Approved - resume execution
+    # Extract token for auth
+    user_token = http_request.headers.get("authorization", "").replace("Bearer ", "")
+
+    # Use message service to execute the tool calls
+    message_service = MessageService(db)
+
+    try:
+        # Execute tool calls using stored context
+        result_message = await message_service._handle_tool_calls(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_token=user_token,
+            messages=pending_approval.conversation_context["messages"],
+            tool_calls=pending_approval.all_tool_calls,
+            provider=pending_approval.conversation_context.get("provider"),
+            model=pending_approval.conversation_context.get("model"),
+            temperature=pending_approval.conversation_context.get("temperature", 0.7),
+            max_tokens=pending_approval.conversation_context.get("max_tokens"),
+            tools=[]  # Tools not needed for execution, only for schema
+        )
+
+        return ToolApprovalResponse(
+            status="approved",
+            tool_call_id=tool_call_id,
+            message=f"Tool call executed successfully. Result message ID: {result_message.id}"
+        )
+
+    except Exception as e:
+        raise HTTPException(500, f"Failed to execute approved tool call: {str(e)}")
 
 
 @router.get("/chats", response_model=List[ChatResponse])

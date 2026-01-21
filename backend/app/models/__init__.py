@@ -10,6 +10,7 @@ from .agent import Agent
 from .llm_provider import LLMProvider
 from .mcp import MCPServer
 from .state import State
+from .pending_approval import PendingToolApproval
 
 __all__ = [
     "Base",
@@ -33,4 +34,5 @@ __all__ = [
     "LLMProvider",
     "MCPServer",
     "State",
+    "PendingToolApproval",
 ]

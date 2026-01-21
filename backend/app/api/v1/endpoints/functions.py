@@ -52,7 +52,9 @@ async def create_function(
         code=function_data.code,
         input_schema=function_data.input_schema,
         output_schema=function_data.output_schema,
-        requirements=function_data.requirements
+        requirements=function_data.requirements,
+        shared_pool=function_data.shared_pool,
+        requires_approval=function_data.requires_approval
     )
 
     db.add(function)
@@ -190,6 +192,10 @@ async def update_function(
         function.output_schema = function_data.output_schema
     if function_data.requirements is not None:
         function.requirements = function_data.requirements
+    if function_data.shared_pool is not None:
+        function.shared_pool = function_data.shared_pool
+    if function_data.requires_approval is not None:
+        function.requires_approval = function_data.requires_approval
     if function_data.is_active is not None:
         function.is_active = function_data.is_active
 

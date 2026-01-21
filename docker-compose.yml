@@ -97,6 +97,8 @@ services:
       dockerfile: Dockerfile
     container_name: sinas-console
     restart: unless-stopped
+    ports:
+      - "5173:80"
 
   caddy:
     image: caddy:2-alpine

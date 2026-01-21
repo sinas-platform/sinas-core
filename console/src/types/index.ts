@@ -124,6 +124,25 @@ export interface ChatWithMessages extends Chat {
   messages: Message[];
 }
 
+// Tool Approvals
+export interface ToolApprovalRequest {
+  approved: boolean;
+}
+
+export interface ToolApprovalResponse {
+  status: string;  // "approved" | "rejected"
+  tool_call_id: string;
+  message?: string;
+}
+
+export interface ApprovalRequiredEvent {
+  type: "approval_required";
+  tool_call_id: string;
+  function_namespace: string;
+  function_name: string;
+  arguments: Record<string, any>;
+}
+
 // Assistants (Agents)
 export interface Assistant {
   id: string;
@@ -296,6 +315,8 @@ export interface Function {
   output_schema: Record<string, any>;
   requirements: string[];
   enabled_namespaces: string[];
+  shared_pool: boolean;
+  requires_approval: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -310,6 +331,8 @@ export interface FunctionCreate {
   output_schema?: Record<string, any>;
   requirements?: string[];
   enabled_namespaces?: string[];
+  shared_pool?: boolean;
+  requires_approval?: boolean;
 }
 
 export interface FunctionUpdate {
@@ -319,6 +342,8 @@ export interface FunctionUpdate {
   output_schema?: Record<string, any>;
   requirements?: string[];
   enabled_namespaces?: string[];
+  shared_pool?: boolean;
+  requires_approval?: boolean;
   is_active?: boolean;
 }
 

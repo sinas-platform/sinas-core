@@ -16,6 +16,8 @@ class FunctionCreate(BaseModel):
     output_schema: Dict[str, Any]
     requirements: List[str] = Field(default_factory=list)
     enabled_namespaces: List[str] = Field(default_factory=list, description="Namespaces this function can call (empty = own namespace only)")
+    shared_pool: bool = Field(default=False, description="Use shared worker pool instead of isolated container")
+    requires_approval: bool = Field(default=False, description="Require user approval before execution")
 
     @validator('code')
     def validate_code(cls, v):
@@ -47,6 +49,8 @@ class FunctionUpdate(BaseModel):
     output_schema: Optional[Dict[str, Any]] = None
     requirements: Optional[List[str]] = None
     enabled_namespaces: Optional[List[str]] = None
+    shared_pool: Optional[bool] = None
+    requires_approval: Optional[bool] = None
     is_active: Optional[bool] = None
 
     @validator('code')
@@ -82,6 +86,8 @@ class FunctionResponse(BaseModel):
     output_schema: Dict[str, Any]
     requirements: List[str]
     enabled_namespaces: List[str]
+    shared_pool: bool
+    requires_approval: bool
     is_active: bool
     created_at: datetime
     updated_at: datetime

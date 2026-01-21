@@ -2,8 +2,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Paperclip, X, Music, FileText } from 'lucide-react';
-import type { MessageContent, UniversalContent } from '../types';
+import { ArrowLeft, Send, Loader2, Bot, User, ChevronDown, ChevronRight, Wrench, Paperclip, X, Music, FileText, AlertTriangle, Check } from 'lucide-react';
+import type { MessageContent, UniversalContent, ApprovalRequiredEvent } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -34,6 +34,7 @@ export function ChatDetail() {
   const [expandedToolCalls, setExpandedToolCalls] = useState<Set<string>>(new Set());
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequiredEvent[]>([]);
 
   const toggleToolCall = (messageId: string) => {
     setExpandedToolCalls(prev => {
@@ -53,6 +54,40 @@ export function ChatDetail() {
     enabled: !!chatId,
     // No polling needed with streaming
   });
+
+  const handleApproval = async (approval: ApprovalRequiredEvent, approved: boolean) => {
+    if (!chatId) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const baseUrl = window.location.hostname === 'localhost'
+        ? 'http://localhost:8000'
+        : `${window.location.protocol}//${window.location.hostname}`;
+
+      const response = await fetch(`${baseUrl}/chats/${chatId}/approve-tool/${approval.tool_call_id}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ approved }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Remove from pending approvals
+      setPendingApprovals(prev => prev.filter(a => a.tool_call_id !== approval.tool_call_id));
+
+      // Refresh chat to show execution results
+      queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+
+    } catch (error) {
+      console.error('Approval error:', error);
+      alert('Failed to process approval. Please try again.');
+    }
+  };
 
   const sendStreamingMessage = async (content: MessageContent) => {
     if (!chatId) return;
@@ -138,6 +173,11 @@ export function ChatDetail() {
                 // Append content chunk
                 if (parsed.content) {
                   setStreamingContent(prev => prev + parsed.content);
+                }
+
+                // Handle approval_required events
+                if (parsed.type === 'approval_required') {
+                  setPendingApprovals(prev => [...prev, parsed]);
                 }
               } else if (eventType === 'done') {
                 // Stream complete
@@ -485,6 +525,54 @@ export function ChatDetail() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Pending Approvals */}
+        {pendingApprovals.length > 0 && (
+          <div className="space-y-3">
+            {pendingApprovals.map((approval) => (
+              <div key={approval.tool_call_id} className="border-2 border-yellow-400 bg-yellow-50 rounded-lg p-4 shadow-md">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <AlertTriangle className="w-6 h-6 text-yellow-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-yellow-900 mb-1">Function Approval Required</h4>
+                    <p className="text-sm text-yellow-800 mb-2">
+                      The assistant wants to call <code className="px-2 py-0.5 bg-yellow-200 rounded font-mono text-xs">{approval.function_namespace}/{approval.function_name}</code>
+                    </p>
+
+                    {/* Show arguments */}
+                    {Object.keys(approval.arguments).length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-medium text-yellow-900 mb-1">Arguments:</p>
+                        <pre className="text-xs bg-white border border-yellow-200 rounded p-2 overflow-x-auto">
+                          {JSON.stringify(approval.arguments, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApproval(approval, true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleApproval(approval, false)}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

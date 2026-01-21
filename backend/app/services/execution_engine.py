@@ -38,19 +38,10 @@ class TrackingDecorator:
                 return await self.tracker.track_function_call(func, args, kwargs)
             return async_wrapper
         else:
-            def sync_wrapper(*args, **kwargs):
-                # For sync functions, we need to handle async tracking differently
-                # when called from an async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in an event loop - we can't use asyncio.run()
-                    # For now, just call the function directly without async tracking
-                    # TODO: Implement proper async tracking from sync context
-                    return func(*args, **kwargs)
-                except RuntimeError:
-                    # No event loop running, safe to use asyncio.run()
-                    return asyncio.run(self.tracker.track_function_call(func, args, kwargs))
-            return sync_wrapper
+            # For sync functions, make wrapper async so tracking works in event loop
+            async def async_sync_wrapper(*args, **kwargs):
+                return await self.tracker.track_function_call(func, args, kwargs)
+            return async_sync_wrapper
 
 
 class ASTInjector:
@@ -120,6 +111,221 @@ class FunctionExecutor:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as e:
             raise SchemaValidationError(f"Schema validation failed: {e.message}")
+
+    async def _execute_in_shared_pool(
+        self,
+        function: Function,
+        input_data: Dict[str, Any],
+        execution_id: str,
+        user_id: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Execute function in shared worker pool (in-process with full tracking).
+
+        SECURITY: Only use for trusted, admin-created functions.
+        No container isolation - runs directly in backend process.
+        Full step tracking for nested function calls.
+
+        Uses thread pool for non-blocking execution of any function (fast or slow).
+        """
+        import concurrent.futures
+        from queue import Queue
+
+        start_time = time.time()
+
+        # Queue for tracking events from thread
+        tracking_queue = Queue()
+
+        def run_in_thread():
+            """Execute function in thread with synchronous tracking."""
+            try:
+                # Create a synchronous tracker that queues events
+                class ThreadTracker:
+                    def __init__(self, execution_id, user_id, queue):
+                        self.execution_id = execution_id
+                        self.user_id = user_id
+                        self.queue = queue
+
+                    def track_function_call(self, func, args, kwargs):
+                        """Sync tracking - queue events for async processing."""
+                        function_name = func.__name__
+                        input_data = args[0] if args else kwargs
+
+                        # Queue tracking start event
+                        self.queue.put(("start", function_name, input_data))
+
+                        func_start = time.time()
+                        try:
+                            # Execute function
+                            result = func(*args, **kwargs)
+                            duration_ms = int((time.time() - func_start) * 1000)
+
+                            # Queue tracking success event
+                            self.queue.put(("success", function_name, result, duration_ms))
+                            return result
+                        except Exception as e:
+                            duration_ms = int((time.time() - func_start) * 1000)
+
+                            # Queue tracking error event
+                            self.queue.put(("error", function_name, str(e), duration_ms))
+                            raise
+
+                class ThreadTrackingDecorator:
+                    def __init__(self, tracker):
+                        self.tracker = tracker
+
+                    def __call__(self, func):
+                        def wrapper(*args, **kwargs):
+                            return self.tracker.track_function_call(func, args, kwargs)
+                        return wrapper
+
+                # Build namespace with thread-safe tracking
+                tracker = ThreadTracker(execution_id, user_id, tracking_queue)
+                track_decorator = ThreadTrackingDecorator(tracker)
+
+                namespace = {
+                    "track": track_decorator,
+                    "__builtins__": __builtins__,
+                    "json": json,
+                    "datetime": datetime,
+                    "uuid": uuid,
+                }
+
+                # Inject tracking decorator
+                modified_code = ASTInjector.inject_tracking_decorator(function.code)
+
+                # Compile and execute
+                compiled_code = compile(modified_code, f"<function:{function.namespace}/{function.name}>", "exec")
+                exec(compiled_code, namespace)
+
+                # Find the function
+                func = None
+                for key, value in namespace.items():
+                    if key not in ["__builtins__", "track", "json", "datetime", "uuid"] and callable(value):
+                        func = value
+                        break
+
+                if not func:
+                    raise FunctionExecutionError(f"Function {function.name} not found in code")
+
+                # Execute function
+                return func(input_data)
+
+            except Exception as e:
+                # Return exception info
+                return {"__exception__": str(e), "__traceback__": traceback.format_exc()}
+
+        try:
+            # Execute in thread pool with timeout
+            timeout = 300  # 5 minutes default timeout
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_in_thread)
+
+                # Process tracking events while waiting
+                async def process_tracking_events():
+                    """Process queued tracking events asynchronously."""
+                    while True:
+                        # Check if function finished
+                        if future.done():
+                            break
+
+                        # Process any queued tracking events
+                        while not tracking_queue.empty():
+                            event = tracking_queue.get()
+                            if event[0] == "start":
+                                _, function_name, input_data = event
+                                step = StepExecution(
+                                    execution_id=execution_id,
+                                    function_name=function_name,
+                                    status=ExecutionStatus.RUNNING,
+                                    input_data=input_data,
+                                    started_at=datetime.utcnow()
+                                )
+                                db.add(step)
+                                await db.commit()
+                            elif event[0] == "success":
+                                _, function_name, result, duration_ms = event
+                                # Update latest step for this function
+                                result_obj = await db.execute(
+                                    select(StepExecution)
+                                    .where(StepExecution.execution_id == execution_id)
+                                    .where(StepExecution.function_name == function_name)
+                                    .order_by(StepExecution.started_at.desc())
+                                    .limit(1)
+                                )
+                                step = result_obj.scalar_one_or_none()
+                                if step:
+                                    step.status = ExecutionStatus.COMPLETED
+                                    step.output_data = result
+                                    step.duration_ms = duration_ms
+                                    step.completed_at = datetime.utcnow()
+                                    await db.commit()
+                            elif event[0] == "error":
+                                _, function_name, error, duration_ms = event
+                                result_obj = await db.execute(
+                                    select(StepExecution)
+                                    .where(StepExecution.execution_id == execution_id)
+                                    .where(StepExecution.function_name == function_name)
+                                    .order_by(StepExecution.started_at.desc())
+                                    .limit(1)
+                                )
+                                step = result_obj.scalar_one_or_none()
+                                if step:
+                                    step.status = ExecutionStatus.FAILED
+                                    step.error = error
+                                    step.duration_ms = duration_ms
+                                    step.completed_at = datetime.utcnow()
+                                    await db.commit()
+
+                        await asyncio.sleep(0.01)  # Small delay to avoid busy waiting
+
+                # Run tracking processor alongside function execution
+                tracking_task = asyncio.create_task(process_tracking_events())
+
+                # Wait for result with timeout
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(future.result),
+                    timeout=timeout
+                )
+
+                # Wait for tracking to finish
+                await tracking_task
+
+                # Process any remaining tracking events
+                while not tracking_queue.empty():
+                    event = tracking_queue.get()
+                    # Process same as above (could refactor to avoid duplication)
+
+                # Check for exception
+                if isinstance(result, dict) and "__exception__" in result:
+                    raise FunctionExecutionError(result["__exception__"])
+
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                return {
+                    "status": "success",
+                    "result": result,
+                    "duration_ms": duration_ms
+                }
+
+        except asyncio.TimeoutError:
+            duration_ms = int((time.time() - start_time) * 1000)
+            return {
+                "status": "failed",
+                "error": f"Function execution timed out after {timeout} seconds",
+                "duration_ms": duration_ms
+            }
+
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            return {
+                "status": "failed",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "duration_ms": duration_ms
+            }
 
     async def load_function(self, db: AsyncSession, function_namespace: str, function_name: str, user_id: str) -> Function:
         """Load function from database with caching."""
@@ -292,19 +498,31 @@ class FunctionExecutor:
                 if not resume_data and function.input_schema:
                     await self.validate_schema(input_data, function.input_schema)
 
-                # Always execute in Docker container for security
                 start_time = time.time()
 
-                # Execute in user's Docker container
-                exec_result = await self.container_manager.execute_function(
-                    user_id=user_id,
-                    function_namespace=function_namespace,
-                    function_name=function_name,
-                    enabled_namespaces=function.enabled_namespaces or [],
-                    input_data=input_data,
-                    execution_id=execution_id,
-                    db=db,
-                )
+                # Route execution based on shared_pool setting
+                if function.shared_pool:
+                    # Execute in shared worker pool (in-process, trusted code)
+                    print(f"⚡ SHARED POOL: Executing {function_namespace}/{function_name} in-process (no container)")
+                    exec_result = await self._execute_in_shared_pool(
+                        function=function,
+                        input_data=input_data,
+                        execution_id=execution_id,
+                        user_id=user_id,
+                        db=db
+                    )
+                else:
+                    # Execute in isolated Docker container (per-user, untrusted code)
+                    print(f"🐳 CONTAINER: Executing {function_namespace}/{function_name} in isolated container for user {user_id}")
+                    exec_result = await self.container_manager.execute_function(
+                        user_id=user_id,
+                        function_namespace=function_namespace,
+                        function_name=function_name,
+                        enabled_namespaces=function.enabled_namespaces or [],
+                        input_data=input_data,
+                        execution_id=execution_id,
+                        db=db,
+                    )
 
                 if exec_result.get('status') == 'failed':
                     raise FunctionExecutionError(exec_result.get('error', 'Unknown error'))
