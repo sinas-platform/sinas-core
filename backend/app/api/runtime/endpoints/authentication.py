@@ -311,10 +311,11 @@ async def check_permissions(
 
     user_id, permissions = current_user_data
 
-    # Check each permission
+    # Check each permission and log the check
     checks = []
     for perm in check_request.permissions:
         has_perm = check_permission(permissions, perm)
+        set_permission_used(request, perm, has_perm=has_perm)
         checks.append(PermissionCheckResult(
             permission=perm,
             has_permission=has_perm
