@@ -235,10 +235,8 @@ export function LLMProviders() {
                   required
                 >
                   <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="azure">Azure OpenAI</option>
+                  <option value="mistral">Mistral AI</option>
                   <option value="ollama">Ollama</option>
-                  <option value="custom">Custom</option>
                 </select>
               </div>
 
@@ -279,7 +277,7 @@ export function LLMProviders() {
                   type="text"
                   value={createFormData.default_model || ''}
                   onChange={(e) => setCreateFormData({ ...createFormData, default_model: e.target.value })}
-                  placeholder="gpt-4, claude-3-opus, etc."
+                  placeholder="gpt-4, mistral-large, llama3, etc."
                   className="input"
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -403,10 +401,8 @@ export function LLMProviders() {
                   required
                 >
                   <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="azure">Azure OpenAI</option>
+                  <option value="mistral">Mistral AI</option>
                   <option value="ollama">Ollama</option>
-                  <option value="custom">Custom</option>
                 </select>
               </div>
 
@@ -450,7 +446,7 @@ export function LLMProviders() {
                   type="text"
                   value={editFormData.default_model || ''}
                   onChange={(e) => setEditFormData({ ...editFormData, default_model: e.target.value })}
-                  placeholder="gpt-4, claude-3-opus, etc."
+                  placeholder="gpt-4, mistral-large, llama3, etc."
                   className="input"
                 />
                 <p className="text-xs text-gray-500 mt-1">

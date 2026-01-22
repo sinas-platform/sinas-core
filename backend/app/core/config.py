@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     oidc_groups_claim: str = "groups"
 
     # Provisioning
-    auto_provision_users: bool = True
+    auto_provision_users: bool = False
     auto_provision_groups: bool = False
     default_group_name: str = "Users"
 

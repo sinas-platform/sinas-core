@@ -8,6 +8,10 @@ export interface User {
   created_at: string;
 }
 
+export interface UserCreate {
+  email: string;
+}
+
 export interface LoginRequest {
   email: string;
 }

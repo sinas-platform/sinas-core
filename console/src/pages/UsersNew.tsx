@@ -55,6 +55,7 @@ export function UsersNew() {
 // Users Tab
 function UsersTab() {
   const queryClient = useQueryClient();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -69,6 +70,12 @@ function UsersTab() {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setShowCreateModal(true)} className="btn btn-primary btn-sm">
+          <UserPlus className="w-4 h-4 mr-2" />
+          Create User
+        </button>
+      </div>
       {isLoading ? (
         <div className="text-center py-8"><div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div></div>
       ) : users && users.length > 0 ? (
@@ -111,6 +118,8 @@ function UsersTab() {
           <p className="text-gray-600">No users found</p>
         </div>
       )}
+
+      {showCreateModal && <CreateUserModal onClose={() => setShowCreateModal(false)} />}
     </div>
   );
 }
@@ -369,6 +378,60 @@ function AddMemberModal({ group, onClose }: { group: any; onClose: () => void })
             <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
             <button type="submit" disabled={mutation.isPending} className="btn btn-primary">
               {mutation.isPending ? 'Adding...' : 'Add'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateUserModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (data: { email: string }) => apiClient.createUser(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      onClose();
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate({ email });
+  };
+
+  return (
+    <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Create User</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="user@example.com"
+              className="input"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              User will be created and assigned to the default group
+            </p>
+          </div>
+          {mutation.isError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+              {(mutation.error as any)?.response?.data?.detail || 'Failed to create user'}
+            </div>
+          )}
+          <div className="flex justify-end space-x-3 pt-4">
+            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+            <button type="submit" disabled={mutation.isPending} className="btn btn-primary">
+              {mutation.isPending ? 'Creating...' : 'Create User'}
             </button>
           </div>
         </form>

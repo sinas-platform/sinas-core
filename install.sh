@@ -221,6 +221,9 @@ if [[ "$START_SERVICES" =~ ^[Yy]$ ]]; then
         exit 1
     fi
 
+    echo -e "${YELLOW}Building executor image...${NC}"
+    docker compose build executor
+
     echo -e "${YELLOW}Starting services...${NC}"
     docker compose up -d
 

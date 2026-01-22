@@ -5,6 +5,7 @@ import type {
   OTPVerifyRequest,
   OTPVerifyResponse,
   User,
+  UserCreate,
   APIKey,
   APIKeyCreate,
   APIKeyCreatedResponse,
@@ -407,6 +408,11 @@ class APIClient {
   // Users
   async listUsers(): Promise<any[]> {
     const response = await this.configClient.get('/users');
+    return response.data;
+  }
+
+  async createUser(data: UserCreate): Promise<User> {
+    const response = await this.configClient.post('/users', data);
     return response.data;
   }
 
