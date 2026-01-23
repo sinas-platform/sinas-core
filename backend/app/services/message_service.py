@@ -169,6 +169,7 @@ class MessageService:
 
         # Get provider type for content conversion (needed before building conversation history)
         provider_type = None
+        provider_config = None
         if provider_name:
             result = await self.db.execute(
                 select(LLMProvider).where(LLMProvider.name == provider_name)
@@ -185,6 +186,21 @@ class MessageService:
                 provider_type = "mistral"
             else:
                 provider_type = "ollama"  # Default fallback
+
+        # If still no provider type, get default provider to determine type
+        if not provider_type:
+            result = await self.db.execute(
+                select(LLMProvider).where(
+                    LLMProvider.is_default == True,
+                    LLMProvider.is_active == True
+                )
+            )
+            provider_config = result.scalar_one_or_none()
+            if provider_config:
+                provider_type = provider_config.provider_type
+                # Also set final_model if not set
+                if not final_model:
+                    final_model = provider_config.default_model
 
         # Save user message
         user_message = Message(

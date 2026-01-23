@@ -412,58 +412,72 @@ export function ChatDetail() {
                       }}
                     >
                       {/* Render multimodal content */}
-                      {Array.isArray(msg.content) ? (
-                        <div className="space-y-2">
-                          {msg.content.map((part, idx) => {
-                            if (part.type === 'text') {
-                              return msg.role === 'assistant' ? (
-                                <div key={idx} className="text-sm prose prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:text-gray-100">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {part.text}
-                                  </ReactMarkdown>
-                                </div>
-                              ) : (
-                                <p key={idx} className="text-sm whitespace-pre-wrap">{part.text}</p>
-                              );
-                            } else if (part.type === 'image') {
-                              return (
-                                <img
-                                  key={idx}
-                                  src={part.image}
-                                  alt="Attached image"
-                                  className="max-w-sm rounded-lg"
-                                />
-                              );
-                            } else if (part.type === 'audio') {
-                              return (
-                                <div key={idx} className="flex items-center gap-2 p-2 bg-white bg-opacity-20 rounded">
-                                  <Music className="w-4 h-4" />
-                                  <span className="text-xs">Audio file ({part.format})</span>
-                                </div>
-                              );
-                            } else if (part.type === 'file') {
-                              return (
-                                <div key={idx} className="flex items-center gap-2 p-2 bg-white bg-opacity-20 rounded">
-                                  <FileText className="w-4 h-4" />
-                                  <span className="text-xs">{part.filename || 'File attachment'}</span>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      ) : (
-                        /* Regular string content */
-                        msg.role === 'assistant' ? (
-                          <div className="text-sm prose prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:text-gray-100">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {msg.content || ''}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        )
-                      )}
+                      {(() => {
+                        // Parse content if it's a JSON string
+                        let content = msg.content;
+                        if (typeof content === 'string' && content.trim().startsWith('[')) {
+                          try {
+                            content = JSON.parse(content);
+                          } catch (e) {
+                            // Not valid JSON, keep as string
+                          }
+                        }
+
+                        if (Array.isArray(content)) {
+                          return (
+                            <div className="space-y-2">
+                              {content.map((part, idx) => {
+                                if (part.type === 'text') {
+                                  return msg.role === 'assistant' ? (
+                                    <div key={idx} className="text-sm prose prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:text-gray-100">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {part.text}
+                                      </ReactMarkdown>
+                                    </div>
+                                  ) : (
+                                    <p key={idx} className="text-sm whitespace-pre-wrap">{part.text}</p>
+                                  );
+                                } else if (part.type === 'image') {
+                                  return (
+                                    <img
+                                      key={idx}
+                                      src={part.image}
+                                      alt="Attached image"
+                                      className="max-w-sm rounded-lg"
+                                    />
+                                  );
+                                } else if (part.type === 'audio') {
+                                  return (
+                                    <div key={idx} className="flex items-center gap-2 p-2 bg-white bg-opacity-20 rounded">
+                                      <Music className="w-4 h-4" />
+                                      <span className="text-xs">Audio file ({part.format})</span>
+                                    </div>
+                                  );
+                                } else if (part.type === 'file') {
+                                  return (
+                                    <div key={idx} className="flex items-center gap-2 p-2 bg-white bg-opacity-20 rounded">
+                                      <FileText className="w-4 h-4" />
+                                      <span className="text-xs">{part.filename || 'File attachment'}</span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                          );
+                        } else {
+                          // Regular string content
+                          return msg.role === 'assistant' ? (
+                            <div className="text-sm prose prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:text-gray-100">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {content || ''}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap">{content}</p>
+                          );
+                        }
+                      })()}
                     </div>
                   )}
 
