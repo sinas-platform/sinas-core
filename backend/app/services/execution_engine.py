@@ -113,10 +113,16 @@ class FunctionExecutor:
             self._worker_manager = shared_worker_manager
         return self._worker_manager
 
-    async def validate_schema(self, data: Any, schema: Dict[str, Any]) -> None:
-        """Validate data against JSON schema."""
+    async def validate_schema(self, data: Any, schema: Dict[str, Any]) -> Any:
+        """
+        Validate data against JSON schema with type coercion.
+
+        Returns:
+            Coerced data
+        """
+        from app.utils.schema import validate_with_coercion
         try:
-            jsonschema.validate(data, schema)
+            return validate_with_coercion(data, schema)
         except jsonschema.ValidationError as e:
             raise SchemaValidationError(f"Schema validation failed: {e.message}")
 
@@ -354,7 +360,8 @@ class FunctionExecutor:
 
                 # Validate input (only for new executions)
                 if not resume_data and function.input_schema:
-                    await self.validate_schema(input_data, function.input_schema)
+                    # Validate and coerce types (handles string -> number, etc.)
+                    input_data = await self.validate_schema(input_data, function.input_schema)
 
                 start_time = time.time()
 

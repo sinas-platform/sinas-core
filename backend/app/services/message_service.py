@@ -68,7 +68,8 @@ class MessageService:
         # Validate input against agent's input_schema
         if agent.input_schema:
             try:
-                jsonschema.validate(instance=input_data, schema=agent.input_schema)
+                from app.utils.schema import validate_with_coercion
+                input_data = validate_with_coercion(input_data, agent.input_schema)
             except jsonschema.ValidationError as e:
                 raise ValueError(f"Input validation failed: {e.message}")
 

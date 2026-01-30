@@ -73,9 +73,11 @@ async def create_chat_with_agent(
     set_permission_used(http_request, agent_perm_all if check_permission(permissions, agent_perm_all) else agent_perm)
 
     # 3. Validate input data against agent's input_schema (if provided)
+    validated_input = request.input
     if request.input and agent.input_schema:
         try:
-            jsonschema.validate(request.input, agent.input_schema)
+            from app.utils.schema import validate_with_coercion
+            validated_input = validate_with_coercion(request.input, agent.input_schema)
         except jsonschema.ValidationError as e:
             raise HTTPException(400, f"Input validation failed: {e.message}")
 
@@ -87,7 +89,7 @@ async def create_chat_with_agent(
         agent_namespace=namespace,
         agent_name=agent_name,
         title=request.title or f"Chat with {namespace}/{agent_name}",
-        chat_metadata={"agent_input": request.input} if request.input else None
+        chat_metadata={"agent_input": validated_input} if validated_input else None
     )
     db.add(chat)
     await db.commit()
@@ -100,9 +102,9 @@ async def create_chat_with_agent(
         for msg_data in agent.initial_messages:
             # Render message content with input_data if it's a string
             content = msg_data["content"]
-            if isinstance(content, str) and request.input:
+            if isinstance(content, str) and validated_input:
                 try:
-                    content = render_template(content, request.input)
+                    content = render_template(content, validated_input)
                 except Exception as e:
                     logger.error(f"Failed to render initial message template: {e}")
 
