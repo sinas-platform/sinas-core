@@ -31,6 +31,13 @@ const navigationSections = [
     ],
   },
   {
+    name: 'USE',
+    items: [
+      { name: 'Chats', href: '/chats', icon: MessageSquare },
+      { name: 'Functions', href: '/functions/execute', icon: Code },
+    ],
+  },
+  {
     name: 'CONFIGURE',
     items: [
       { name: 'Agents', href: '/agents', icon: Bot },
@@ -38,17 +45,10 @@ const navigationSections = [
       { name: 'Functions', href: '/functions', icon: Code },
       { name: 'Templates', href: '/templates', icon: FileText },
       { name: 'Webhooks', href: '/webhooks', icon: Webhook },
+      { name: 'States', href: '/states', icon: Database },
       { name: 'LLM Providers', href: '/llm-providers', icon: Brain },
       { name: 'MCP Servers', href: '/mcp', icon: Server },
       { name: 'Schedules', href: '/schedules', icon: Clock },
-    ],
-  },
-  {
-    name: 'TEST & MONITOR',
-    items: [
-      { name: 'Chats', href: '/chats', icon: MessageSquare },
-      { name: 'States', href: '/states', icon: Database },
-      { name: 'Request Logs', href: '/logs', icon: Activity },
     ],
   },
   {
@@ -62,6 +62,8 @@ const navigationSections = [
   {
     name: 'SYSTEM',
     items: [
+      { name: 'Messages', href: '/messages', icon: Activity },
+      { name: 'Request Logs', href: '/logs', icon: Activity },
       { name: 'Workers', href: '/workers', icon: Server },
       { name: 'Config Manager', href: '/config', icon: Settings },
     ],

@@ -513,6 +513,11 @@ class APIClient {
     await this.configClient.delete(`/functions/${namespace}/${name}`);
   }
 
+  async executeFunction(namespace: string, name: string, inputData: any): Promise<any> {
+    const response = await this.configClient.post(`/functions/${namespace}/${name}/execute`, inputData);
+    return response.data;
+  }
+
   // Webhooks
   async listWebhooks(): Promise<Webhook[]> {
     const response = await this.configClient.get('/webhooks');
@@ -712,6 +717,19 @@ class APIClient {
     const response = await this.configClient.post(`/templates/${templateId}/render`, { variables });
     return response.data;
   }
+
+  // Messages (analytics/search across all messages)
+  async searchMessages(params?: {
+    agent?: string;
+    role?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> {
+    const response = await this.configClient.get('/messages', { params });
+    return response.data;
+  }
 }
+
 
 export const apiClient = new APIClient();

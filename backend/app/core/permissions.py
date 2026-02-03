@@ -299,6 +299,9 @@ DEFAULT_ROLE_PERMISSIONS = {
         # Executions (runtime - non-namespaced)
         "sinas.executions.read:own": True,
 
+        # Messages (observability - non-namespaced)
+        "sinas.messages.read:own": True,
+
         # Users (non-namespaced)
         "sinas.users.read:own": True,
         "sinas.users.update:own": True,

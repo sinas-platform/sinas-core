@@ -17,6 +17,7 @@ from .endpoints import (
     api_keys,
     templates,
     skills,
+    messages,
 )
 
 router = APIRouter()
@@ -37,8 +38,11 @@ router.include_router(webhooks.router)
 router.include_router(packages.router)
 router.include_router(schedules.router)
 
-# System routes
+# Observability routes
+router.include_router(messages.router)
 router.include_router(request_logs.router)
+
+# System routes
 router.include_router(containers.router)
 router.include_router(workers.router)
 

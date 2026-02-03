@@ -12,6 +12,7 @@ class TriggerType(str, enum.Enum):
     WEBHOOK = "WEBHOOK"
     SCHEDULE = "SCHEDULE"
     AGENT = "AGENT"  # Triggered by agent/chat tool call
+    MANUAL = "MANUAL"  # Triggered manually from UI
 
 
 class ExecutionStatus(str, enum.Enum):

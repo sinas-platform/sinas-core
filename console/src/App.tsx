@@ -27,6 +27,8 @@ import { Permissions } from './pages/Permissions';
 import { Workers } from './pages/Workers';
 import { Templates } from './pages/Templates';
 import { Skills } from './pages/Skills';
+import { Messages } from './pages/Messages';
+import { FunctionExecute } from './pages/FunctionExecute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,9 +102,11 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="chats" element={<Chats />} />
               <Route path="chats/:chatId" element={<ChatDetail />} />
+              <Route path="messages" element={<Messages />} />
               <Route path="agents" element={<Agents />} />
               <Route path="agents/:namespace/:name" element={<AgentDetail />} />
               <Route path="functions" element={<Functions />} />
+              <Route path="functions/execute" element={<FunctionExecute />} />
               <Route path="functions/:namespace/:name" element={<FunctionEditor />} />
               <Route path="webhooks" element={<Webhooks />} />
               <Route path="webhooks/*" element={<WebhookEditor />} />

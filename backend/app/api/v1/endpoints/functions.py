@@ -341,3 +341,70 @@ async def list_function_versions(
     versions = result.scalars().all()
 
     return versions
+
+
+@router.post("/{namespace}/{name}/execute")
+async def execute_function(
+    request: Request,
+    namespace: str,
+    name: str,
+    input_data: dict,
+    current_user_data: tuple = Depends(get_current_user_with_permissions),
+    db: AsyncSession = Depends(get_db)
+):
+    """Execute a function directly from the management UI."""
+    user_id, permissions = current_user_data
+
+    # Load function
+    function = await Function.get_by_name(db, namespace, name)
+    if not function:
+        raise HTTPException(status_code=404, detail="Function not found")
+
+    # Check execute permission
+    permission = f"sinas.functions/{namespace}/{name}.execute:own"
+    if not check_permission(permissions, permission):
+        set_permission_used(request, permission, has_perm=False)
+        raise HTTPException(status_code=403, detail="Not authorized to execute this function")
+
+    set_permission_used(request, permission)
+
+    # Execute function via execution engine
+    from app.services.execution_engine import executor
+    from app.models.execution import TriggerType
+    from app.core.auth import create_access_token
+    from app.models.user import User
+
+    # Get user info for context
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one_or_none()
+    user_email = user.email if user else "unknown@unknown.com"
+
+    # Generate execution ID and access token
+    execution_id = str(uuid.uuid4())
+    access_token = create_access_token(user_id, user_email)
+
+    try:
+        result = await executor.execute_function(
+            function_namespace=namespace,
+            function_name=name,
+            input_data=input_data,
+            execution_id=execution_id,
+            trigger_type=TriggerType.MANUAL.value,
+            trigger_id="management-ui",
+            user_id=user_id,
+            chat_id=None
+        )
+
+        return {
+            "status": "success",
+            "execution_id": execution_id,
+            "result": result
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "execution_id": execution_id,
+            "error": str(e)
+        }
