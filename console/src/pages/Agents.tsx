@@ -1,14 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
 import { Link } from 'react-router-dom';
-import { Bot, Plus, Trash2, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { Bot, Plus, Trash2, Edit, CheckCircle, XCircle, Copy } from 'lucide-react';
 import { useState } from 'react';
-import type { AssistantCreate } from '../types';
+import type { AgentCreate } from '../types';
 
 export function Agents() {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [formData, setFormData] = useState<AssistantCreate>({
+  const [formData, setFormData] = useState<AgentCreate>({
     namespace: 'default',
     name: '',
     description: '',
@@ -17,7 +17,7 @@ export function Agents() {
 
   const { data: agents, isLoading } = useQuery({
     queryKey: ['agents'],
-    queryFn: () => apiClient.listAssistants(),
+    queryFn: () => apiClient.listAgents(),
     retry: false,
   });
 
@@ -28,7 +28,7 @@ export function Agents() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: AssistantCreate) => apiClient.createAssistant(data),
+    mutationFn: (data: AgentCreate) => apiClient.createAgent(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       setShowCreateModal(false);
@@ -37,7 +37,46 @@ export function Agents() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ namespace, name }: { namespace: string; name: string }) => apiClient.deleteAssistant(namespace, name),
+    mutationFn: ({ namespace, name }: { namespace: string; name: string }) => apiClient.deleteAgent(namespace, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async ({ namespace, name }: { namespace: string; name: string }) => {
+      // Fetch full agent details
+      const agent = await apiClient.getAgent(namespace, name);
+
+      // Create timestamp
+      const now = new Date();
+      const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+
+      // Create duplicate with modified name (convert null to undefined)
+      const duplicateData: AgentCreate = {
+        namespace: agent.namespace,
+        name: `${agent.name} (copy - ${timestamp})`,
+        description: agent.description || undefined,
+        llm_provider_id: agent.llm_provider_id || undefined,
+        model: agent.model || undefined,
+        temperature: agent.temperature ?? undefined,
+        max_tokens: agent.max_tokens ?? undefined,
+        system_prompt: agent.system_prompt || undefined,
+        input_schema: agent.input_schema,
+        output_schema: agent.output_schema,
+        initial_messages: agent.initial_messages || undefined,
+        enabled_functions: agent.enabled_functions,
+        enabled_mcp_tools: agent.enabled_mcp_tools,
+        enabled_agents: agent.enabled_agents || undefined,
+        enabled_skills: agent.enabled_skills || undefined,
+        function_parameters: agent.function_parameters,
+        mcp_tool_parameters: agent.mcp_tool_parameters,
+        state_namespaces_readonly: agent.state_namespaces_readonly || undefined,
+        state_namespaces_readwrite: agent.state_namespaces_readwrite || undefined,
+      };
+
+      return apiClient.createAgent(duplicateData);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
@@ -154,17 +193,32 @@ export function Agents() {
                   <Edit className="w-4 h-4 mr-1" />
                   Edit
                 </Link>
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to delete this agent?')) {
-                      deleteMutation.mutate({ namespace: agent.namespace, name: agent.name });
-                    }
-                  }}
-                  className="text-sm text-red-600 hover:text-red-700 flex items-center"
-                  disabled={deleteMutation.isPending}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (confirm('Create a duplicate of this agent?')) {
+                        duplicateMutation.mutate({ namespace: agent.namespace, name: agent.name });
+                      }
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-700 flex items-center cursor-pointer"
+                    disabled={duplicateMutation.isPending}
+                    title="Duplicate agent"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete this agent?')) {
+                        deleteMutation.mutate({ namespace: agent.namespace, name: agent.name });
+                      }
+                    }}
+                    className="text-sm text-red-600 hover:text-red-700 flex items-center cursor-pointer"
+                    disabled={deleteMutation.isPending}
+                    title="Delete agent"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

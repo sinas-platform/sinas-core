@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Trash2, Loader2, Bot } from 'lucide-react';
-import type { AssistantUpdate } from '../types';
+import type { AgentUpdate } from '../types';
 import { JSONSchemaEditor } from '../components/JSONSchemaEditor';
 
 export function AgentDetail() {
@@ -13,7 +13,7 @@ export function AgentDetail() {
 
   const { data: agent, isLoading } = useQuery({
     queryKey: ['agent', namespace, name],
-    queryFn: () => apiClient.getAssistant(namespace!, name!),
+    queryFn: () => apiClient.getAgent(namespace!, name!),
     enabled: !!namespace && !!name,
   });
 
@@ -37,7 +37,7 @@ export function AgentDetail() {
 
   const { data: agents } = useQuery({
     queryKey: ['agents'],
-    queryFn: () => apiClient.listAssistants(),
+    queryFn: () => apiClient.listAgents(),
     retry: false,
   });
 
@@ -53,7 +53,7 @@ export function AgentDetail() {
     retry: false,
   });
 
-  const [formData, setFormData] = useState<AssistantUpdate>({});
+  const [formData, setFormData] = useState<AgentUpdate>({});
   const [toolsTab, setToolsTab] = useState<'assistants' | 'skills' | 'functions' | 'mcp' | 'states'>('assistants');
   const [expandedFunctionParams, setExpandedFunctionParams] = useState<Set<string>>(new Set());
 
@@ -86,7 +86,7 @@ export function AgentDetail() {
   }, [agent]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: AssistantUpdate) => apiClient.updateAssistant(namespace!, name!, data),
+    mutationFn: (data: AgentUpdate) => apiClient.updateAgent(namespace!, name!, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agent', namespace, name] });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -98,7 +98,7 @@ export function AgentDetail() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiClient.deleteAssistant(namespace!, name!),
+    mutationFn: () => apiClient.deleteAgent(namespace!, name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/agents');

@@ -152,8 +152,8 @@ export interface EnabledSkillConfig {
   preload: boolean;  // If true, inject into system prompt instead of exposing as tool
 }
 
-// Assistants (Agents)
-export interface Assistant {
+// Agents
+export interface Agent {
   id: string;
   user_id: string | null;
   namespace: string;
@@ -180,7 +180,7 @@ export interface Assistant {
   updated_at: string;
 }
 
-export interface AssistantCreate {
+export interface AgentCreate {
   namespace?: string;
   name: string;
   description?: string;
@@ -202,7 +202,7 @@ export interface AssistantCreate {
   state_namespaces_readwrite?: string[];
 }
 
-export interface AssistantUpdate {
+export interface AgentUpdate {
   namespace?: string;
   name?: string;
   description?: string;
@@ -223,25 +223,6 @@ export interface AssistantUpdate {
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   is_active?: boolean;
-}
-
-// Memories
-export interface Memory {
-  id: string;
-  user_id: string;
-  key: string;
-  value: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MemoryCreate {
-  key: string;
-  value: string;
-}
-
-export interface MemoryUpdate {
-  value: string;
 }
 
 // MCP Servers

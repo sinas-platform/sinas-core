@@ -21,7 +21,7 @@ export function Messages() {
 
   const { data: agents } = useQuery({
     queryKey: ['agents'],
-    queryFn: () => apiClient.listAssistants(),
+    queryFn: () => apiClient.listAgents(),
   });
 
   const messages = messagesData?.messages || [];

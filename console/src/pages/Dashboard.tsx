@@ -10,7 +10,7 @@ export function Dashboard() {
 
   const { data: agents } = useQuery({
     queryKey: ['assistants'],
-    queryFn: () => apiClient.listAssistants(),
+    queryFn: () => apiClient.listAgents(),
     enabled: !!user,
     retry: false,
   });

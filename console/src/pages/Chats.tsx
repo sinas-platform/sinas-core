@@ -22,7 +22,7 @@ export function Chats() {
 
   const { data: assistants } = useQuery({
     queryKey: ['assistants'],
-    queryFn: () => apiClient.listAssistants(),
+    queryFn: () => apiClient.listAgents(),
     retry: false,
   });
 

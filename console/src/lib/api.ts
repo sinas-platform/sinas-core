@@ -15,12 +15,9 @@ import type {
   ChatWithMessages,
   Message,
   MessageSendRequest,
-  Assistant,
-  AssistantCreate,
-  AssistantUpdate,
-  Memory,
-  MemoryCreate,
-  MemoryUpdate,
+  Agent,
+  AgentCreate,
+  AgentUpdate,
   MCPServer,
   MCPServerCreate,
   MCPServerUpdate,
@@ -274,54 +271,29 @@ class APIClient {
     return response.data;
   }
 
-  // Agents (formerly Assistants)
-  async listAssistants(): Promise<Assistant[]> {
+  // Agents
+  async listAgents(): Promise<Agent[]> {
     const response = await this.configClient.get('/agents');
     return response.data;
   }
 
-  async getAssistant(namespace: string, name: string): Promise<Assistant> {
+  async getAgent(namespace: string, name: string): Promise<Agent> {
     const response = await this.configClient.get(`/agents/${namespace}/${name}`);
     return response.data;
   }
 
-  async createAssistant(data: AssistantCreate): Promise<Assistant> {
+  async createAgent(data: AgentCreate): Promise<Agent> {
     const response = await this.configClient.post('/agents', data);
     return response.data;
   }
 
-  async updateAssistant(namespace: string, name: string, data: AssistantUpdate): Promise<Assistant> {
+  async updateAgent(namespace: string, name: string, data: AgentUpdate): Promise<Agent> {
     const response = await this.configClient.put(`/agents/${namespace}/${name}`, data);
     return response.data;
   }
 
-  async deleteAssistant(namespace: string, name: string): Promise<void> {
+  async deleteAgent(namespace: string, name: string): Promise<void> {
     await this.configClient.delete(`/agents/${namespace}/${name}`);
-  }
-
-  // Memories
-  async listMemories(): Promise<Memory[]> {
-    const response = await this.configClient.get('/agents/memories');
-    return response.data;
-  }
-
-  async getMemory(key: string): Promise<Memory> {
-    const response = await this.configClient.get(`/agents/memories/${key}`);
-    return response.data;
-  }
-
-  async createMemory(data: MemoryCreate): Promise<Memory> {
-    const response = await this.configClient.post('/agents/memories', data);
-    return response.data;
-  }
-
-  async updateMemory(key: string, data: MemoryUpdate): Promise<Memory> {
-    const response = await this.configClient.put(`/agents/memories/${key}`, data);
-    return response.data;
-  }
-
-  async deleteMemory(key: string): Promise<void> {
-    await this.configClient.delete(`/agents/memories/${key}`);
   }
 
   // MCP Servers
