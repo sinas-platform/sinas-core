@@ -5,6 +5,8 @@ from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_user_permissions
+from app.core.permissions import check_permission
 from app.models.function import Function
 from app.services.template_renderer import render_function_parameters
 
@@ -55,8 +57,8 @@ class FunctionToolConverter:
 
             namespace, name = function_ref.split("/", 1)
 
-            # Load function by namespace/name
-            function = await Function.get_by_name(db, namespace, name, user_id=user_id)
+            # Load function by namespace/name (no user filter - permissions checked at execution)
+            function = await Function.get_by_name(db, namespace, name)
 
             if not function or not function.is_active:
                 # Skip if function not found or inactive
@@ -188,6 +190,22 @@ class FunctionToolConverter:
 
         if not function or not function.is_active:
             raise ValueError(f"Function not found: {tool_name}")
+
+        # Check permissions: sinas.functions/{namespace}/{name}.execute:own or :all
+        user_permissions = await get_user_permissions(db, user_id)
+        execute_perm_all = f"sinas.functions/{namespace}/{name}.execute:all"
+        execute_perm_own = f"sinas.functions/{namespace}/{name}.execute:own"
+
+        has_permission = check_permission(user_permissions, execute_perm_all) or (
+            check_permission(user_permissions, execute_perm_own)
+            and str(function.user_id) == user_id
+        )
+
+        if not has_permission:
+            return {
+                "error": "Permission denied",
+                "message": f"You don't have permission to execute function '{namespace}/{name}'. Required: sinas.functions/{namespace}/{name}.execute:own or :all",
+            }
 
         # Merge prefilled params with LLM arguments
         # Prefilled params take precedence (handle None arguments as empty dict)
