@@ -63,22 +63,16 @@ async def create_chat_with_agent(
     if not agent or not agent.is_active:
         raise HTTPException(404, f"Agent '{namespace}/{agent_name}' not found")
 
-    # 2. Check permissions: Need agent read permission
-    agent_perm = f"sinas.agents/{namespace}/{agent_name}.read:own"
-    agent_perm_all = f"sinas.agents/{namespace}/{agent_name}.read:all"
+    # 2. Check permissions: Need agent chat permission to create chat
+    agent_chat_perm = f"sinas.agents/{namespace}/{agent_name}.chat:all"
 
-    has_permission = check_permission(permissions, agent_perm_all) or (
-        check_permission(permissions, agent_perm) and str(agent.user_id) == user_id
-    )
+    has_permission = check_permission(permissions, agent_chat_perm)
 
     if not has_permission:
-        set_permission_used(http_request, agent_perm, has_perm=False)
-        raise HTTPException(403, f"Not authorized to use agent '{namespace}/{agent_name}'")
+        set_permission_used(http_request, agent_chat_perm, has_perm=False)
+        raise HTTPException(403, f"Not authorized to chat with agent '{namespace}/{agent_name}'")
 
-    set_permission_used(
-        http_request,
-        agent_perm_all if check_permission(permissions, agent_perm_all) else agent_perm,
-    )
+    set_permission_used(http_request, agent_chat_perm)
 
     # 3. Validate input data against agent's input_schema (if provided)
     validated_input = request.input
