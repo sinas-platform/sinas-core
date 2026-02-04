@@ -51,7 +51,6 @@ async def create_group(
     member = UserRole(
         role_id=group.id,
         user_id=uuid.UUID(user_id),
-        role="admin",
         active=True,
         added_by=uuid.UUID(user_id),
     )
@@ -258,7 +257,6 @@ async def list_group_members(
                 role_id=member.role_id,
                 user_id=member.user_id,
                 user_email=email,
-                role=member.role,
                 active=member.active,
                 added_at=member.added_at,
             )
@@ -308,7 +306,6 @@ async def add_group_member(
             raise HTTPException(status_code=400, detail="User is already a member of this group")
         # Reactivate membership
         existing.active = True
-        existing.role = member_data.role
         existing.added_by = uuid.UUID(user_id)
         await db.commit()
         await db.refresh(existing)
@@ -318,7 +315,6 @@ async def add_group_member(
             role_id=existing.role_id,
             user_id=existing.user_id,
             user_email=user.email,
-            role=existing.role,
             active=existing.active,
             added_at=existing.added_at,
         )
@@ -327,7 +323,6 @@ async def add_group_member(
     membership = UserRole(
         role_id=group.id,
         user_id=member_data.user_id,
-        role=member_data.role,
         active=True,
         added_by=uuid.UUID(user_id),
     )
@@ -341,7 +336,6 @@ async def add_group_member(
         role_id=membership.role_id,
         user_id=membership.user_id,
         user_email=user.email,
-        role=membership.role,
         active=membership.active,
         added_at=membership.added_at,
     )

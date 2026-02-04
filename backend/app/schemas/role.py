@@ -38,7 +38,6 @@ class UserRoleResponse(BaseModel):
     role_id: uuid.UUID
     user_id: uuid.UUID
     user_email: str
-    role: Optional[str]
     active: bool
     added_at: datetime
 
@@ -48,7 +47,6 @@ class UserRoleResponse(BaseModel):
 
 class UserRoleAdd(BaseModel):
     user_id: uuid.UUID
-    role: Optional[str] = "member"
 
 
 class RolePermissionResponse(BaseModel):

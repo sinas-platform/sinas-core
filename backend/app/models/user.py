@@ -78,7 +78,6 @@ class UserRole(Base):
     id: Mapped[uuid_pk]
     role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("roles.id"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    role: Mapped[Optional[str]] = mapped_column(String(100))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     added_at: Mapped[created_at]
     added_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"))

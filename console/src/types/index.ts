@@ -271,7 +271,6 @@ export interface UserRole {
   role_id: string;
   user_id: string;
   user_email: string;
-  role: string | null;
   active: boolean;
   added_at: string;
 }
