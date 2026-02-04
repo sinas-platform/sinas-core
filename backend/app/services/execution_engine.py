@@ -21,6 +21,9 @@ from app.models.function import Function
 from app.services.clickhouse_logger import clickhouse_logger
 from app.services.tracking import ExecutionTracker
 
+from types import SimpleNamespace
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -220,26 +223,17 @@ class FunctionExecutor:
         if cache_key in self.namespace_cache:
             return self.namespace_cache[cache_key]
 
-        from types import SimpleNamespace
-
-        from app.models.user import UserRole
-
-        # Get user's groups
-        groups_result = await db.execute(
-            select(UserRole.role_id).where(UserRole.user_id == user_id)
-        )
-        group_ids = [row[0] for row in groups_result.all()]
-
         # Determine which namespaces to load
         # Always include own namespace, plus enabled_namespaces
         allowed_namespaces = [function_namespace] + (enabled_namespaces or [])
 
-        # Load functions from allowed namespaces that user has access to
+        # Load functions from allowed namespaces that user owns
+        # NOTE: Functions can only call their own functions + functions in enabled_namespaces
         result = await db.execute(
             select(Function).where(
                 Function.is_active == True,
                 Function.namespace.in_(allowed_namespaces),
-                (Function.user_id == user_id) | (Function.group_id.in_(group_ids)),
+                Function.user_id == user_id,
             )
         )
         functions = result.scalars().all()

@@ -1,7 +1,7 @@
 """Agent endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -41,8 +41,6 @@ async def create_agent(
     set_permission_used(req, create_perm)
 
     # Check if agent name already exists in this namespace
-    from sqlalchemy import and_
-
     result = await db.execute(
         select(Agent).where(
             and_(Agent.namespace == agent_data.namespace, Agent.name == agent_data.name)

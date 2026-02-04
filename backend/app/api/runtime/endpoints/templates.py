@@ -13,9 +13,7 @@ from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import _send_email_sync
-from app.core.permissions import check_permission
 from app.models.template import Template
-from app.models.user import UserRole
 from app.services.template_renderer import render_template
 
 logger = logging.getLogger(__name__)
@@ -53,31 +51,23 @@ class TemplateEmailResponse(BaseModel):
     to: str
 
 
-async def get_user_group_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    """Get all group IDs that the user is a member of."""
-    result = await db.execute(
-        select(UserRole.role_id).where(and_(UserRole.user_id == user_id, UserRole.active == True))
-    )
-    return [row[0] for row in result.all()]
-
-
 async def get_template_with_permission_check(
     db: AsyncSession,
     namespace: str,
     name: str,
-    user_id: uuid.UUID,
+    user_id: str,
     permissions: dict[str, bool],
     action: str,  # "render" or "send"
     request: Request,
 ) -> Template:
     """
-    Get template by namespace/name and check permissions.
+    Get template by namespace/name and check permissions using mixin.
 
     Args:
         db: Database session
         namespace: Template namespace
         name: Template name
-        user_id: Current user ID
+        user_id: Current user ID (string)
         permissions: User permissions
         action: Action being performed (for permission check)
         request: FastAPI request (for permission logging)
@@ -88,57 +78,18 @@ async def get_template_with_permission_check(
     Raises:
         HTTPException: If not found or not authorized
     """
-    # Load template
-    result = await db.execute(
-        select(Template).where(
-            and_(Template.namespace == namespace, Template.name == name, Template.is_active == True)
-        )
+    # Use mixin for permission-aware get
+    template = await Template.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action=action,
+        namespace=namespace,
+        name=name,
     )
-    template = result.scalar_one_or_none()
 
-    if not template:
-        raise HTTPException(
-            status_code=404, detail=f"Template '{namespace}/{name}' not found or inactive"
-        )
-
-    # Check permissions based on ownership
-    perm_base = f"sinas.templates.{namespace}.{name}.{action}"
-
-    # Check :all scope first
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(request, f"{perm_base}:all")
-        return template
-
-    # Check if user owns the template
-    if template.user_id == user_id:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(request, f"{perm_base}:own")
-            return template
-        else:
-            set_permission_used(request, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(
-                status_code=403, detail=f"Not authorized to {action} template '{namespace}/{name}'"
-            )
-
-    # Check group ownership
-    if template.group_id:
-        user_groups = await get_user_group_ids(db, user_id)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(request, f"{perm_base}:group")
-                return template
-            else:
-                set_permission_used(request, f"{perm_base}:group", has_perm=False)
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Not authorized to {action} template '{namespace}/{name}'",
-                )
-
-    # No ownership match
-    set_permission_used(request, f"{perm_base}:own", has_perm=False)
-    raise HTTPException(
-        status_code=403, detail=f"Not authorized to {action} template '{namespace}/{name}'"
-    )
+    set_permission_used(request, f"sinas.templates/{namespace}/{name}.{action}")
+    return template
 
 
 @router.post("/{namespace}/{name}/render", response_model=TemplateRenderResponse)
@@ -156,14 +107,13 @@ async def render_template_endpoint(
     Requires permission: sinas.templates.{namespace}.{name}.render:scope
     """
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
     # Get template with permission check
     template = await get_template_with_permission_check(
         db=db,
         namespace=namespace,
         name=name,
-        user_id=user_uuid,
+        user_id=user_id,
         permissions=permissions,
         action="render",
         request=request,
@@ -220,7 +170,6 @@ async def send_email_with_template(
     Requires permission: sinas.templates.{namespace}.{name}.send:scope
     """
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
     # Check SMTP configuration
     if not settings.smtp_host or not settings.smtp_domain:
@@ -231,7 +180,7 @@ async def send_email_with_template(
         db=db,
         namespace=namespace,
         name=name,
-        user_id=user_uuid,
+        user_id=user_id,
         permissions=permissions,
         action="send",
         request=request,

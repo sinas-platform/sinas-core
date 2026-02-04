@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.core.database import get_db
+from app.core.permissions import check_permission
 from app.models.execution import TriggerType
 from app.models.webhook import Webhook
 from app.services.execution_engine import executor
@@ -76,8 +77,6 @@ async def execute_webhook(
     current_user_data: tuple = Depends(get_current_user_with_permissions),
 ):
     """Execute webhook by triggering associated function. Requires authentication."""
-    from app.core.permissions import check_permission
-
     user_id, permissions = current_user_data
 
     # Look up webhook configuration
@@ -99,20 +98,11 @@ async def execute_webhook(
         )
 
     # Check permissions: Need function execute permission
-    function_perm = (
-        f"sinas.functions.{webhook.function_namespace}.{webhook.function_name}.execute:own"
-    )
-    function_perm_group = (
-        f"sinas.functions.{webhook.function_namespace}.{webhook.function_name}.execute:group"
-    )
-    function_perm_all = (
-        f"sinas.functions.{webhook.function_namespace}.{webhook.function_name}.execute:all"
-    )
+    function_perm = f"sinas.functions/{webhook.function_namespace}/{webhook.function_name}.execute:own"
+    function_perm_all = f"sinas.functions/{webhook.function_namespace}/{webhook.function_name}.execute:all"
 
-    has_permission = (
-        check_permission(permissions, function_perm_all)
-        or (check_permission(permissions, function_perm_group) and webhook.group_id)
-        or (check_permission(permissions, function_perm) and str(webhook.user_id) == user_id)
+    has_permission = check_permission(permissions, function_perm_all) or (
+        check_permission(permissions, function_perm) and str(webhook.user_id) == user_id
     )
 
     if not has_permission:
