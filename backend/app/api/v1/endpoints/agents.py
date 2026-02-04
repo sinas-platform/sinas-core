@@ -97,23 +97,16 @@ async def list_agents(
     """List all agents accessible by the current user."""
     user_id, permissions = current_user_data
 
-    # Check if user has get:all permission (e.g., admin)
-    if check_permission(permissions, "sinas.agents.read:all"):
-        set_permission_used(req, "sinas.agents.read:all", has_perm=True)
-        # Return all agents
-        result = await db.execute(
-            select(Agent).where(Agent.is_active == True).order_by(Agent.created_at.desc())
-        )
-    else:
-        set_permission_used(req, "sinas.agents.read:own", has_perm=True)
-        # Return only user's own agents
-        result = await db.execute(
-            select(Agent)
-            .where(Agent.user_id == user_id, Agent.is_active == True)
-            .order_by(Agent.created_at.desc())
-        )
+    # Use mixin for permission-aware filtering
+    agents = await Agent.list_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+        additional_filters=Agent.is_active == True,
+    )
 
-    agents = result.scalars().all()
+    set_permission_used(req, "sinas.agents.read")
 
     return [AgentResponse.model_validate(agent) for agent in agents]
 
@@ -129,30 +122,19 @@ async def get_agent(
     """Get a specific agent by namespace and name."""
     user_id, permissions = current_user_data
 
-    # Check permissions first to determine query scope
-    has_all_permission = check_permission(permissions, "sinas.agents.read:all")
+    # Use mixin for permission-aware get (handles 404 and 403 automatically)
+    agent = await Agent.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+        namespace=namespace,
+        name=name,
+    )
 
-    if has_all_permission:
-        # Admin can see all agents - don't filter by user_id
-        agent = await Agent.get_by_name(db, namespace, name, user_id=None)
-        set_permission_used(req, "sinas.agents.read:all")
-    else:
-        # Regular user - filter by user_id
-        agent = await Agent.get_by_name(db, namespace, name, user_id=user_id)
-        set_permission_used(req, f"sinas.agents/{namespace}/{name}.read:own")
+    set_permission_used(req, f"sinas.agents/{namespace}/{name}.read")
 
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent '{namespace}/{name}' not found"
-        )
-
-    # Additional ownership check for non-admin users
-    if not has_all_permission and agent.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this agent")
-
-    response = AgentResponse.model_validate(agent)
-
-    return response
+    return AgentResponse.model_validate(agent)
 
 
 @router.put("/{namespace}/{name}", response_model=AgentResponse)

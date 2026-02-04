@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, created_at, updated_at, uuid_pk
+from .mixins import PermissionMixin
 
 
-class Agent(Base):
+class Agent(Base, PermissionMixin):
     __tablename__ = "agents"
     __table_args__ = (UniqueConstraint("namespace", "name", name="uix_agent_namespace_name"),)
 

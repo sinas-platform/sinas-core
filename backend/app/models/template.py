@@ -5,9 +5,10 @@ from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, created_at, updated_at, uuid_pk
+from .mixins import PermissionMixin
 
 
-class Template(Base):
+class Template(Base, PermissionMixin):
     __tablename__ = "templates"
     __table_args__ = (UniqueConstraint("namespace", "name", name="uix_template_namespace_name"),)
 

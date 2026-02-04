@@ -9,7 +9,6 @@ from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.core.database import get_db
 from app.core.permissions import check_permission
 from app.models import Template
-from app.models.user import UserRole
 from app.schemas.template import (
     TemplateCreate,
     TemplateRenderRequest,
@@ -19,14 +18,6 @@ from app.schemas.template import (
 )
 
 router = APIRouter()
-
-
-async def get_user_group_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    """Get all group IDs that the user is a member of."""
-    result = await db.execute(
-        select(UserRole.role_id).where(and_(UserRole.user_id == user_id, UserRole.active == True))
-    )
-    return [row[0] for row in result.all()]
 
 
 @router.post("", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
@@ -40,27 +31,13 @@ async def create_template(
     user_id, permissions = current_user_data
     user_uuid = uuid.UUID(user_id)
 
-    # Check permission based on namespace and group_id
-    perm_base = f"sinas.templates.{template_data.namespace}.*.post"
+    # Check create permission
+    perm = "sinas.templates.create:own"
 
-    if template_data.group_id:
-        # Creating group template - need :group or :all permission
-        if not check_permission(permissions, f"{perm_base}:group"):
-            set_permission_used(req, f"{perm_base}:group", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to create group templates")
-
-        # Verify user is member of the group
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template_data.group_id not in user_groups:
-            raise HTTPException(status_code=403, detail="Not a member of the specified group")
-
-        set_permission_used(req, f"{perm_base}:group")
-    else:
-        # Creating own template - need :own, :group, or :all permission
-        if not check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to create templates")
-        set_permission_used(req, f"{perm_base}:own")
+    if not check_permission(permissions, perm):
+        set_permission_used(req, perm, has_perm=False)
+        raise HTTPException(status_code=403, detail="Not authorized to create templates")
+    set_permission_used(req, perm)
 
     # Check if template namespace+name already exists
     result = await db.execute(
@@ -84,7 +61,6 @@ async def create_template(
         variable_schema=template_data.variable_schema or {},
         is_active=True,
         user_id=user_uuid,
-        group_id=template_data.group_id,
         created_by=user_uuid,
         updated_by=user_uuid,
     )
@@ -104,24 +80,16 @@ async def list_templates(
 ):
     """List templates accessible to the current user."""
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
-    # Build query based on permissions
-    if check_permission(permissions, "sinas.templates.read:all"):
-        set_permission_used(req, "sinas.templates.read:all")
-        # Admin - see all templates
-        query = select(Template).order_by(Template.created_at.desc())
-    else:
-        set_permission_used(req, "sinas.templates.read:own")
-        # Own templates only
-        query = (
-            select(Template)
-            .where(Template.user_id == user_uuid)
-            .order_by(Template.created_at.desc())
-        )
+    # Use mixin for permission-aware filtering
+    templates = await Template.list_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+    )
 
-    result = await db.execute(query)
-    templates = result.scalars().all()
+    set_permission_used(req, "sinas.templates.read")
 
     return [TemplateResponse.model_validate(t) for t in templates]
 
@@ -135,40 +103,20 @@ async def get_template(
 ):
     """Get a template by ID."""
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
+    # Load template
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Check permissions based on ownership
-    perm_base = f"sinas.templates.{template.namespace}.{template.name}.get"
-
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(req, f"{perm_base}:all")
-    elif template.user_id == user_uuid:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own")
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to get this template")
-    elif template.group_id:
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(req, f"{perm_base}:group")
-            else:
-                set_permission_used(req, f"{perm_base}:group", has_perm=False)
-                raise HTTPException(status_code=403, detail="Not authorized to get this template")
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to get this template")
-    else:
-        set_permission_used(req, f"{perm_base}:own", has_perm=False)
+    # Use mixin to check permission
+    if not template.can_user_access(user_id, permissions, "read"):
+        set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.read", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to get this template")
 
+    set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.read")
     return TemplateResponse.model_validate(template)
 
 
@@ -182,42 +130,18 @@ async def get_template_by_name(
 ):
     """Get a template by namespace and name."""
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
-    result = await db.execute(
-        select(Template).where(and_(Template.namespace == namespace, Template.name == name))
+    # Use mixin for permission-aware get
+    template = await Template.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+        namespace=namespace,
+        name=name,
     )
-    template = result.scalar_one_or_none()
 
-    if not template:
-        raise HTTPException(status_code=404, detail=f"Template '{namespace}/{name}' not found")
-
-    # Check permissions based on ownership
-    perm_base = f"sinas.templates.{namespace}.{name}.get"
-
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(req, f"{perm_base}:all")
-    elif template.user_id == user_uuid:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own")
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to get this template")
-    elif template.group_id:
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(req, f"{perm_base}:group")
-            else:
-                set_permission_used(req, f"{perm_base}:group", has_perm=False)
-                raise HTTPException(status_code=403, detail="Not authorized to get this template")
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to get this template")
-    else:
-        set_permission_used(req, f"{perm_base}:own", has_perm=False)
-        raise HTTPException(status_code=403, detail="Not authorized to get this template")
-
+    set_permission_used(req, f"sinas.templates/{namespace}/{name}.read")
     return TemplateResponse.model_validate(template)
 
 
@@ -233,33 +157,19 @@ async def update_template(
     user_id, permissions = current_user_data
     user_uuid = uuid.UUID(user_id)
 
+    # Load template
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Check permissions based on ownership
-    perm_base = f"sinas.templates.{template.namespace}.{template.name}.put"
-
-    can_update = False
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(req, f"{perm_base}:all")
-        can_update = True
-    elif template.user_id == user_uuid:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own")
-            can_update = True
-    elif template.group_id:
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(req, f"{perm_base}:group")
-                can_update = True
-
-    if not can_update:
-        set_permission_used(req, f"{perm_base}:own", has_perm=False)
+    # Use mixin to check permission
+    if not template.can_user_access(user_id, permissions, "update"):
+        set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.update", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to update this template")
+
+    set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.update")
 
     # Check for namespace/name conflict if renaming
     new_namespace = template_data.namespace or template.namespace
@@ -300,35 +210,20 @@ async def delete_template(
 ):
     """Delete a template."""
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
+    # Load template
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Check permissions based on ownership
-    perm_base = f"sinas.templates.{template.namespace}.{template.name}.delete"
-
-    can_delete = False
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(req, f"{perm_base}:all")
-        can_delete = True
-    elif template.user_id == user_uuid:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own")
-            can_delete = True
-    elif template.group_id:
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(req, f"{perm_base}:group")
-                can_delete = True
-
-    if not can_delete:
-        set_permission_used(req, f"{perm_base}:own", has_perm=False)
+    # Use mixin to check permission
+    if not template.can_user_access(user_id, permissions, "delete"):
+        set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.delete", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to delete this template")
+
+    set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.delete")
 
     await db.delete(template)
     await db.commit()
@@ -344,42 +239,20 @@ async def render_template_preview(
 ):
     """Render a template with given variables (preview for testing)."""
     user_id, permissions = current_user_data
-    user_uuid = uuid.UUID(user_id)
 
-    # Get template
+    # Load template
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Check permissions - use get permission for preview
-    perm_base = f"sinas.templates.{template.namespace}.{template.name}.get"
-
-    if check_permission(permissions, f"{perm_base}:all"):
-        set_permission_used(req, f"{perm_base}:all")
-    elif template.user_id == user_uuid:
-        if check_permission(permissions, f"{perm_base}:own"):
-            set_permission_used(req, f"{perm_base}:own")
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to render this template")
-    elif template.group_id:
-        user_groups = await get_user_group_ids(db, user_uuid)
-        if template.group_id in user_groups:
-            if check_permission(permissions, f"{perm_base}:group"):
-                set_permission_used(req, f"{perm_base}:group")
-            else:
-                set_permission_used(req, f"{perm_base}:group", has_perm=False)
-                raise HTTPException(
-                    status_code=403, detail="Not authorized to render this template"
-                )
-        else:
-            set_permission_used(req, f"{perm_base}:own", has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to render this template")
-    else:
-        set_permission_used(req, f"{perm_base}:own", has_perm=False)
+    # Use mixin to check permission - use render action
+    if not template.can_user_access(user_id, permissions, "render"):
+        set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.render", has_perm=False)
         raise HTTPException(status_code=403, detail="Not authorized to render this template")
+
+    set_permission_used(req, f"sinas.templates/{template.namespace}/{template.name}.render")
 
     # Render template using inline rendering (don't need to look up by name again)
     try:
