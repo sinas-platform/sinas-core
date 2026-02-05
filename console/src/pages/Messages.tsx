@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { Filter, Search, MessageSquare } from 'lucide-react';
+import { Filter, Search, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
 
 export function Messages() {
   const [agentFilter, setAgentFilter] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 
   const { data: messagesData, isLoading } = useQuery({
     queryKey: ['messages', agentFilter, roleFilter, searchTerm],
@@ -27,12 +28,6 @@ export function Messages() {
   const messages = messagesData?.messages || [];
   const total = messagesData?.total || 0;
 
-  const truncateContent = (content: string | null, maxLength: number = 100) => {
-    if (!content) return '-';
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('en-US', {
@@ -41,6 +36,16 @@ export function Messages() {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date);
+  };
+
+  const toggleMessageExpanded = (messageId: string) => {
+    const newExpanded = new Set(expandedMessages);
+    if (newExpanded.has(messageId)) {
+      newExpanded.delete(messageId);
+    } else {
+      newExpanded.add(messageId);
+    }
+    setExpandedMessages(newExpanded);
   };
 
   return (
@@ -160,52 +165,98 @@ export function Messages() {
                   </td>
                 </tr>
               ) : (
-                messages.map((message: any) => (
-                  <tr key={message.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(message.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                      {message.chat?.agent_namespace}/{message.chat?.agent_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {message.user?.email || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          message.role === 'user'
-                            ? 'bg-blue-100 text-blue-800'
-                            : message.role === 'assistant'
-                            ? 'bg-green-100 text-green-800'
-                            : message.role === 'tool'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
+                messages.map((message: any) => {
+                  const isExpanded = expandedMessages.has(message.id);
+                  const hasLongContent = message.content && message.content.length > 100;
+
+                  return (
+                    <>
+                      <tr
+                        key={message.id}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => hasLongContent && toggleMessageExpanded(message.id)}
                       >
-                        {message.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 max-w-md">
-                      <div className="line-clamp-2">
-                        {truncateContent(message.content)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {message.tool_calls && message.tool_calls.length > 0 ? (
-                        <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                          {message.tool_calls.length} call{message.tool_calls.length > 1 ? 's' : ''}
-                        </span>
-                      ) : message.tool_call_id ? (
-                        <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                          Response
-                        </span>
-                      ) : (
-                        '-'
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(message.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
+                          {message.chat?.agent_namespace}/{message.chat?.agent_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {message.user?.email || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              message.role === 'user'
+                                ? 'bg-blue-100 text-blue-800'
+                                : message.role === 'assistant'
+                                ? 'bg-green-100 text-green-800'
+                                : message.role === 'tool'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {message.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 max-w-md">
+                          <div className="flex items-start gap-2">
+                            {hasLongContent && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleMessageExpanded(message.id);
+                                }}
+                                className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+                              >
+                                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              </button>
+                            )}
+                            <div className={!isExpanded && hasLongContent ? "line-clamp-2" : ""}>
+                              {message.content || '-'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {message.tool_calls && message.tool_calls.length > 0 ? (
+                            <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                              {message.tool_calls.length} call{message.tool_calls.length > 1 ? 's' : ''}
+                            </span>
+                          ) : message.tool_call_id ? (
+                            <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                              Response
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      </tr>
+                      {/* Expanded row for full tool_calls/tool_call_id details */}
+                      {isExpanded && (message.tool_calls || message.tool_call_id) && (
+                        <tr key={`${message.id}-details`} className="bg-gray-50">
+                          <td colSpan={6} className="px-6 py-4">
+                            <div className="space-y-2">
+                              {message.tool_calls && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-700 mb-2">Tool Calls:</p>
+                                  <pre className="text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
+                                    {JSON.stringify(message.tool_calls, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {message.tool_call_id && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-700">Tool Call ID: {message.tool_call_id}</p>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))
+                    </>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { Code, Plus, Trash2, Edit2, Package } from 'lucide-react';
-import { useState } from 'react';
+import { Code, Plus, Trash2, Edit2, Package, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
 export function Functions() {
   const queryClient = useQueryClient();
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [packageName, setPackageName] = useState('');
+  const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
+  const [searchFilter, setSearchFilter] = useState('');
 
   const { data: functions, isLoading } = useQuery({
     queryKey: ['functions'],
@@ -55,6 +57,28 @@ export function Functions() {
     }
   };
 
+  const toggleFunctionExpanded = (funcId: string) => {
+    const newExpanded = new Set(expandedFunctions);
+    if (newExpanded.has(funcId)) {
+      newExpanded.delete(funcId);
+    } else {
+      newExpanded.add(funcId);
+    }
+    setExpandedFunctions(newExpanded);
+  };
+
+  // Filter functions based on search
+  const filteredFunctions = useMemo(() => {
+    if (!functions) return [];
+    if (!searchFilter.trim()) return functions;
+
+    const search = searchFilter.toLowerCase();
+    return functions.filter((func: any) =>
+      `${func.namespace}/${func.name}`.toLowerCase().includes(search) ||
+      func.description?.toLowerCase().includes(search)
+    );
+  }, [functions, searchFilter]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -76,6 +100,27 @@ export function Functions() {
           </Link>
         </div>
       </div>
+
+      {/* Search Bar */}
+      {functions && functions.length > 0 && (
+        <div className="card">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Search functions by name, namespace, or description..."
+              className="input w-full !pl-11"
+            />
+          </div>
+          {searchFilter && (
+            <p className="text-sm text-gray-500 mt-2">
+              Found {filteredFunctions.length} function{filteredFunctions.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Packages Section */}
       {packages && packages.length > 0 && (
@@ -123,9 +168,11 @@ export function Functions() {
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
         </div>
-      ) : functions && functions.length > 0 ? (
+      ) : filteredFunctions && filteredFunctions.length > 0 ? (
         <div className="grid gap-6">
-          {functions.map((func: any) => (
+          {filteredFunctions.map((func: any) => {
+            const isExpanded = expandedFunctions.has(func.id);
+            return (
             <div key={func.id} className="card">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center flex-1">
@@ -147,12 +194,31 @@ export function Functions() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600">{func.description || 'No description'}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Created {new Date(func.created_at).toLocaleDateString()}
-                    </p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <p className="text-xs text-gray-500">
+                        Created {new Date(func.created_at).toLocaleDateString()}
+                      </p>
+                      {func.requirements && func.requirements.length > 0 && (
+                        <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                          {func.requirements.length} requirement{func.requirements.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {func.enabled_namespaces && func.enabled_namespaces.length > 0 && (
+                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                          Calls {func.enabled_namespaces.length} namespace{func.enabled_namespaces.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => toggleFunctionExpanded(func.id)}
+                    className="text-gray-600 hover:text-gray-900"
+                    title={isExpanded ? "Hide code" : "Show code"}
+                  >
+                    {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                  </button>
                   <Link
                     to={`/functions/${func.namespace}/${func.name}`}
                     className="text-primary-600 hover:text-primary-700"
@@ -172,11 +238,16 @@ export function Functions() {
                   </button>
                 </div>
               </div>
-              <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                <pre className="text-sm text-gray-100 font-mono">{func.code}</pre>
-              </div>
+
+              {/* Expandable Code Section */}
+              {isExpanded && (
+                <div className="mt-4 bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                  <pre className="text-sm text-gray-100 font-mono">{func.code}</pre>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12 card">

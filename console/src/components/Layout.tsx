@@ -20,6 +20,7 @@ import {
   Webhook,
   FileText,
   Lightbulb,
+  Play,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -34,7 +35,7 @@ const navigationSections = [
     name: 'USE',
     items: [
       { name: 'Chats', href: '/chats', icon: MessageSquare },
-      { name: 'Functions', href: '/functions/execute', icon: Code },
+      { name: 'Executions', href: '/functions/execute', icon: Play },
     ],
   },
   {
