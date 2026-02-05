@@ -9,9 +9,10 @@ from sqlalchemy.future import select
 from sqlalchemy.sql import func
 
 from app.models.base import Base
+from app.models.mixins import PermissionMixin
 
 
-class Skill(Base):
+class Skill(Base, PermissionMixin):
     """Skill instructions that agents can retrieve as needed."""
 
     __tablename__ = "skills"

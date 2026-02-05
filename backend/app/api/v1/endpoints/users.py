@@ -111,20 +111,16 @@ async def get_user(
     """Get a specific user with their groups."""
     current_user_id, permissions = current_user_data
 
-    # Users can view their own profile, admins can view any user
-    if str(user_id) == current_user_id:
-        set_permission_used(request, "sinas.users.read:own")
-    elif check_permission(permissions, "sinas.users.read:all"):
-        set_permission_used(request, "sinas.users.read:all")
-    else:
-        set_permission_used(request, "sinas.users.read:all", has_perm=False)
-        raise HTTPException(status_code=403, detail="Not authorized to view this user")
+    # Use mixin for permission-aware get
+    user = await User.get_with_permissions(
+        db=db,
+        user_id=current_user_id,
+        permissions=permissions,
+        action="read",
+        resource_id=user_id,
+    )
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    set_permission_used(request, "sinas.users.read")
 
     # Get user's groups
     memberships_result = await db.execute(
@@ -162,20 +158,16 @@ async def update_user(
     """Update a user. Only admins can update other users."""
     current_user_id, permissions = current_user_data
 
-    # Users can update themselves, admins can update anyone
-    if str(user_id) == current_user_id:
-        set_permission_used(request, "sinas.users.update:own")
-    elif check_permission(permissions, "sinas.users.update:all"):
-        set_permission_used(request, "sinas.users.update:all")
-    else:
-        set_permission_used(request, "sinas.users.update:all", has_perm=False)
-        raise HTTPException(status_code=403, detail="Not authorized to update this user")
+    # Use mixin for permission-aware get
+    user = await User.get_with_permissions(
+        db=db,
+        user_id=current_user_id,
+        permissions=permissions,
+        action="update",
+        resource_id=user_id,
+    )
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    set_permission_used(request, "sinas.users.update")
 
     # Update fields (currently no updatable fields)
     # Future: Add updatable fields like display_name, etc.
@@ -196,21 +188,20 @@ async def delete_user(
     """Delete a user. Only admins can delete users."""
     current_user_id, permissions = current_user_data
 
-    if not check_permission(permissions, "sinas.users.delete:all"):
-        set_permission_used(request, "sinas.users.delete:all", has_perm=False)
-        raise HTTPException(status_code=403, detail="Not authorized to delete users")
-
-    set_permission_used(request, "sinas.users.delete:all")
-
     # Prevent deleting yourself
     if str(user_id) == current_user_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own user account")
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    # Use mixin for permission-aware get
+    user = await User.get_with_permissions(
+        db=db,
+        user_id=current_user_id,
+        permissions=permissions,
+        action="delete",
+        resource_id=user_id,
+    )
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    set_permission_used(request, "sinas.users.delete")
 
     await db.delete(user)
     await db.commit()

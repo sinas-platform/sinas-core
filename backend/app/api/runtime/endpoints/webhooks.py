@@ -68,7 +68,6 @@ async def extract_request_data(request: Request) -> dict[str, Any]:
 @router.api_route(
     "/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    operation_id="execute_webhook",
 )
 async def execute_webhook(
     path: str,

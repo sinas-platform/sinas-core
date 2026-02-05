@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, created_at, updated_at, uuid_pk
+from .mixins import PermissionMixin
 
 
-class User(Base):
+class User(Base, PermissionMixin):
     __tablename__ = "users"
 
     id: Mapped[uuid_pk]
@@ -37,6 +38,25 @@ class User(Base):
     chats: Mapped[list["Chat"]] = relationship("Chat", back_populates="user")
     agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="user")
     states: Mapped[list["State"]] = relationship("State", back_populates="user")
+
+    def can_user_access(
+        self,
+        user_id: str,
+        permissions: dict[str, bool],
+        action: str,
+    ) -> bool:
+        """Override: Users own themselves via id, not user_id."""
+        from app.core.permissions import check_permission
+
+        # Check :all
+        if check_permission(permissions, f"sinas.users.{action}:all"):
+            return True
+
+        # Check :own (user can access their own record)
+        if check_permission(permissions, f"sinas.users.{action}:own"):
+            return str(self.id) == user_id
+
+        return False
 
 
 class Role(Base):

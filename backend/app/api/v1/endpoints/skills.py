@@ -68,26 +68,20 @@ async def list_skills(
     """List all skills accessible to the user."""
     user_id, permissions = current_user_data
 
-    # Build query based on permissions
-    if check_permission(permissions, "sinas.skills.read:all"):
-        # Admin can see all skills
-        set_permission_used(request, "sinas.skills.read:all")
-        query = select(Skill).where(Skill.is_active == True)
-    else:
-        # User can see only their own skills
-        permission = "sinas.skills.read:own"
-        if not check_permission(permissions, permission):
-            set_permission_used(request, permission, has_perm=False)
-            raise HTTPException(status_code=403, detail="Not authorized to list skills")
-        set_permission_used(request, permission)
-        query = select(Skill).where(and_(Skill.user_id == user_id, Skill.is_active == True))
-
-    # Filter by namespace if provided
+    # Use mixin for permission-aware filtering
+    additional_filters = Skill.is_active == True
     if namespace:
-        query = query.where(Skill.namespace == namespace)
+        additional_filters = and_(additional_filters, Skill.namespace == namespace)
 
-    result = await db.execute(query.order_by(Skill.namespace, Skill.name))
-    skills = result.scalars().all()
+    skills = await Skill.list_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+        additional_filters=additional_filters,
+    )
+
+    set_permission_used(request, "sinas.skills.read")
 
     return [SkillResponse.model_validate(skill) for skill in skills]
 
@@ -103,29 +97,17 @@ async def get_skill(
     """Get a specific skill by namespace and name."""
     user_id, permissions = current_user_data
 
-    # Get skill
-    skill = await Skill.get_by_name(db, namespace, name)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{namespace}/{name}' not found")
-
-    # Check permissions
-    skill_perm = f"sinas.skills/{namespace}/{name}.read:own"
-    has_permission = check_permission(permissions, f"sinas.skills/{namespace}/{name}.read:all") or (
-        check_permission(permissions, skill_perm) and str(skill.user_id) == user_id
+    # Use mixin for permission-aware get
+    skill = await Skill.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="read",
+        namespace=namespace,
+        name=name,
     )
 
-    if not has_permission:
-        set_permission_used(request, skill_perm, has_perm=False)
-        raise HTTPException(
-            status_code=403, detail=f"Not authorized to read skill '{namespace}/{name}'"
-        )
-
-    set_permission_used(
-        request,
-        f"sinas.skills/{namespace}/{name}.read:all"
-        if check_permission(permissions, f"sinas.skills/{namespace}/{name}.read:all")
-        else skill_perm,
-    )
+    set_permission_used(request, f"sinas.skills/{namespace}/{name}.read")
 
     return SkillResponse.model_validate(skill)
 
@@ -142,29 +124,17 @@ async def update_skill(
     """Update a skill."""
     user_id, permissions = current_user_data
 
-    # Get skill
-    skill = await Skill.get_by_name(db, namespace, name)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{namespace}/{name}' not found")
-
-    # Check permissions
-    skill_perm = f"sinas.skills/{namespace}/{name}.update:own"
-    has_permission = check_permission(
-        permissions, f"sinas.skills/{namespace}/{name}.update:all"
-    ) or (check_permission(permissions, skill_perm) and str(skill.user_id) == user_id)
-
-    if not has_permission:
-        set_permission_used(request, skill_perm, has_perm=False)
-        raise HTTPException(
-            status_code=403, detail=f"Not authorized to update skill '{namespace}/{name}'"
-        )
-
-    set_permission_used(
-        request,
-        f"sinas.skills/{namespace}/{name}.update:all"
-        if check_permission(permissions, f"sinas.skills/{namespace}/{name}.update:all")
-        else skill_perm,
+    # Use mixin for permission-aware get
+    skill = await Skill.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="update",
+        namespace=namespace,
+        name=name,
     )
+
+    set_permission_used(request, f"sinas.skills/{namespace}/{name}.update")
 
     # If namespace or name is being updated, check for conflicts
     new_namespace = skill_data.namespace or skill.namespace
@@ -210,29 +180,17 @@ async def delete_skill(
     """Delete a skill."""
     user_id, permissions = current_user_data
 
-    # Get skill
-    skill = await Skill.get_by_name(db, namespace, name)
-    if not skill:
-        raise HTTPException(status_code=404, detail=f"Skill '{namespace}/{name}' not found")
-
-    # Check permissions
-    skill_perm = f"sinas.skills/{namespace}/{name}.delete:own"
-    has_permission = check_permission(
-        permissions, f"sinas.skills/{namespace}/{name}.delete:all"
-    ) or (check_permission(permissions, skill_perm) and str(skill.user_id) == user_id)
-
-    if not has_permission:
-        set_permission_used(request, skill_perm, has_perm=False)
-        raise HTTPException(
-            status_code=403, detail=f"Not authorized to delete skill '{namespace}/{name}'"
-        )
-
-    set_permission_used(
-        request,
-        f"sinas.skills/{namespace}/{name}.delete:all"
-        if check_permission(permissions, f"sinas.skills/{namespace}/{name}.delete:all")
-        else skill_perm,
+    # Use mixin for permission-aware get
+    skill = await Skill.get_with_permissions(
+        db=db,
+        user_id=user_id,
+        permissions=permissions,
+        action="delete",
+        namespace=namespace,
+        name=name,
     )
+
+    set_permission_used(request, f"sinas.skills/{namespace}/{name}.delete")
 
     await db.delete(skill)
     await db.commit()
