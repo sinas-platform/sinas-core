@@ -943,7 +943,13 @@ class MessageService:
                     "type": "string",
                     "description": "Internal agent identifier",
                     "const": str(agent.id),  # Force this specific value
+                    "default": str(agent.id),  # Provide default for LLMs that don't respect const
                 }
+                # Make _agent_id required
+                if "required" not in params:
+                    params["required"] = []
+                if "_agent_id" not in params["required"]:
+                    params["required"].append("_agent_id")
                 tool_def["function"]["parameters"] = params
             else:
                 # Default: simple prompt + hidden agent_id
@@ -958,9 +964,10 @@ class MessageService:
                             "type": "string",
                             "description": "Internal agent identifier",
                             "const": str(agent.id),
+                            "default": str(agent.id),  # Provide default for LLMs that don't respect const
                         },
                     },
-                    "required": ["prompt"],
+                    "required": ["prompt", "_agent_id"],
                 }
 
             tools.append(tool_def)
@@ -1148,12 +1155,13 @@ class MessageService:
 
             # Send message to the agent
             # Output schema enforcement happens automatically in send_message
+            # Note: input_data is already stored in chat.chat_metadata['agent_input']
+            # by create_chat_with_agent(), so template rendering will work automatically
             response_message = await self.send_message(
                 chat_id=str(sub_chat.id),
                 user_id=user_id,
                 user_token=user_token,
                 content=content,
-                template_variables=input_data,
             )
 
             # Return the agent's response
