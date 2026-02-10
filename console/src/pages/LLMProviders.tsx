@@ -235,6 +235,7 @@ export function LLMProviders() {
                   required
                 >
                   <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
                   <option value="mistral">Mistral AI</option>
                   <option value="ollama">Ollama</option>
                 </select>
@@ -401,6 +402,7 @@ export function LLMProviders() {
                   required
                 >
                   <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
                   <option value="mistral">Mistral AI</option>
                   <option value="ollama">Ollama</option>
                 </select>

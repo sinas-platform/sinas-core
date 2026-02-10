@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import EncryptionService
 
+from .anthropic_provider import AnthropicProvider
 from .base import BaseLLMProvider
 from .mistral_provider import MistralProvider
 from .ollama_provider import OllamaProvider
@@ -45,43 +46,12 @@ async def create_provider(
             )
         )
     else:
-        # Auto-detect from model name
-        if model:
-            if model.startswith("gpt-") or model.startswith("o1-"):
-                provider_type = "openai"
-            elif (
-                model.startswith("mistral-")
-                or model.startswith("pixtral-")
-                or model.startswith("codestral-")
-            ):
-                provider_type = "mistral"
-            elif "/" in model or model in ["llama", "codellama"]:
-                provider_type = "ollama"
-            else:
-                provider_type = None
-
-            if provider_type:
-                result = await db.execute(
-                    select(LLMProvider)
-                    .where(
-                        LLMProvider.provider_type == provider_type, LLMProvider.is_active == True
-                    )
-                    .order_by(LLMProvider.is_default.desc())
-                )
-            else:
-                # Use default provider
-                result = await db.execute(
-                    select(LLMProvider).where(
-                        LLMProvider.is_default == True, LLMProvider.is_active == True
-                    )
-                )
-        else:
-            # Use default provider
-            result = await db.execute(
-                select(LLMProvider).where(
-                    LLMProvider.is_default == True, LLMProvider.is_active == True
-                )
+        # Use default provider (no auto-detection)
+        result = await db.execute(
+            select(LLMProvider).where(
+                LLMProvider.is_default == True, LLMProvider.is_active == True
             )
+        )
 
     provider_config = result.scalar_one_or_none()
     if not provider_config:
@@ -100,6 +70,8 @@ async def create_provider(
         return OpenAIProvider(api_key=api_key, base_url=provider_config.api_endpoint)
     elif provider_type == "mistral":
         return MistralProvider(api_key=api_key, base_url=provider_config.api_endpoint)
+    elif provider_type == "anthropic":
+        return AnthropicProvider(api_key=api_key, base_url=provider_config.api_endpoint)
     elif provider_type == "ollama":
         return OllamaProvider(base_url=provider_config.api_endpoint or "http://localhost:11434")
     else:
