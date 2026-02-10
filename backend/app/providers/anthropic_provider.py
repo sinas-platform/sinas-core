@@ -37,7 +37,7 @@ class AnthropicProvider(BaseLLMProvider):
             "model": model,
             "messages": filtered_messages,
             "temperature": temperature,
-            "max_tokens": max_tokens or 4096,  # Anthropic requires max_tokens
+            "max_tokens": max_tokens or 16384,  # Anthropic requires max_tokens
         }
 
         if system_message:
@@ -98,8 +98,7 @@ class AnthropicProvider(BaseLLMProvider):
             "model": model,
             "messages": filtered_messages,
             "temperature": temperature,
-            "max_tokens": max_tokens or 4096,
-            "stream": True,
+            "max_tokens": max_tokens or 16384,
         }
 
         if system_message:
