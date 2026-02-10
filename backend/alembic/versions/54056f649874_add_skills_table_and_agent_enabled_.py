@@ -42,8 +42,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_skills_name"), "skills", ["name"], unique=False)
     op.create_index(op.f("ix_skills_namespace"), "skills", ["namespace"], unique=False)
     op.create_index(op.f("ix_skills_user_id"), "skills", ["user_id"], unique=False)
-    op.drop_index(op.f("ix_apscheduler_jobs_next_run_time"), table_name="apscheduler_jobs")
-    op.drop_table("apscheduler_jobs")
+    # Note: APScheduler manages its own tables - removed drop operations
     # Add enabled_skills column with default value for existing rows
     op.add_column(
         "agents", sa.Column("enabled_skills", sa.JSON(), server_default="[]", nullable=False)
@@ -88,21 +87,7 @@ def downgrade() -> None:
         ondelete="SET NULL",
     )
     op.drop_column("agents", "enabled_skills")
-    op.create_table(
-        "apscheduler_jobs",
-        sa.Column("id", sa.VARCHAR(length=191), autoincrement=False, nullable=False),
-        sa.Column(
-            "next_run_time", sa.DOUBLE_PRECISION(precision=53), autoincrement=False, nullable=True
-        ),
-        sa.Column("job_state", postgresql.BYTEA(), autoincrement=False, nullable=False),
-        sa.PrimaryKeyConstraint("id", name=op.f("apscheduler_jobs_pkey")),
-    )
-    op.create_index(
-        op.f("ix_apscheduler_jobs_next_run_time"),
-        "apscheduler_jobs",
-        ["next_run_time"],
-        unique=False,
-    )
+    # Note: APScheduler manages its own tables - removed create operations
     op.drop_index(op.f("ix_skills_user_id"), table_name="skills")
     op.drop_index(op.f("ix_skills_namespace"), table_name="skills")
     op.drop_index(op.f("ix_skills_name"), table_name="skills")
