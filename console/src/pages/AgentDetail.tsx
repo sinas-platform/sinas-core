@@ -263,9 +263,9 @@ export function AgentDetail() {
                   className="input"
                 >
                   <option value="">No provider (use default)</option>
-                  {llmProviders?.filter(p => p.is_active).map((provider) => (
+                  {llmProviders?.map((provider) => (
                     <option key={provider.id} value={provider.id}>
-                      {provider.name} ({provider.provider_type})
+                      {provider.name} ({provider.provider_type}){!provider.is_active ? ' - INACTIVE' : ''}
                     </option>
                   ))}
                 </select>

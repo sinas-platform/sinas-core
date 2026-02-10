@@ -186,14 +186,30 @@ class MessageService:
         if provider:
             provider_name = provider
         elif agent and agent.llm_provider_id:
-            # Load provider relationship if needed
+            # Load provider relationship if needed (only active providers)
             if not agent.llm_provider:
+                result = await self.db.execute(
+                    select(LLMProvider).where(
+                        LLMProvider.id == agent.llm_provider_id,
+                        LLMProvider.is_active == True
+                    )
+                )
+                agent.llm_provider = result.scalar_one_or_none()
+
+            if agent.llm_provider:
+                provider_name = agent.llm_provider.name
+            else:
+                # Provider exists but is inactive - raise clear error
                 result = await self.db.execute(
                     select(LLMProvider).where(LLMProvider.id == agent.llm_provider_id)
                 )
-                agent.llm_provider = result.scalar_one_or_none()
-            if agent.llm_provider:
-                provider_name = agent.llm_provider.name
+                inactive_provider = result.scalar_one_or_none()
+                if inactive_provider:
+                    raise ValueError(
+                        f"Agent '{agent.namespace}/{agent.name}' is configured to use LLM provider "
+                        f"'{inactive_provider.name}' which is currently inactive. Please activate the "
+                        f"provider or update the agent's LLM provider setting."
+                    )
 
         # Get model: message param > agent model > provider default
         final_model = model or (agent.model if agent else None)

@@ -67,11 +67,9 @@ async def list_llm_providers(
     user_id: str = Depends(require_permission("sinas.llm_providers.read:all")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all LLM providers. Admin only."""
+    """List all LLM providers (including inactive). Admin only."""
     result = await db.execute(
-        select(LLMProvider)
-        .where(LLMProvider.is_active == True)
-        .order_by(LLMProvider.created_at.desc())
+        select(LLMProvider).order_by(LLMProvider.created_at.desc())
     )
     providers = result.scalars().all()
     return [LLMProviderResponse.model_validate(p) for p in providers]

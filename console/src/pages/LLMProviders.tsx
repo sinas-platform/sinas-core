@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { Brain, Plus, Trash2, Edit2, CheckCircle, XCircle, Star } from 'lucide-react';
+import { Brain, Plus, Trash2, Edit2, Star } from 'lucide-react';
 import { useState } from 'react';
 import type { LLMProvider, LLMProviderCreate, LLMProviderUpdate } from '../types';
 import { ErrorDisplay } from '../components/ErrorDisplay';
@@ -123,10 +123,10 @@ export function LLMProviders() {
       ) : providers && providers.length > 0 ? (
         <div className="grid gap-6">
           {providers.map((provider) => (
-            <div key={provider.id} className="card">
+            <div key={provider.id} className={`card ${!provider.is_active ? 'opacity-60 bg-gray-50' : ''}`}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center flex-1">
-                  <Brain className="w-8 h-8 text-primary-600 mr-3 flex-shrink-0" />
+                  <Brain className={`w-8 h-8 mr-3 flex-shrink-0 ${provider.is_active ? 'text-primary-600' : 'text-gray-400'}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-gray-900">{provider.name}</h3>
@@ -134,9 +134,9 @@ export function LLMProviders() {
                         <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
                       )}
                       {provider.is_active ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
+                        <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded">Active</span>
                       ) : (
-                        <XCircle className="w-5 h-5 text-gray-400" />
+                        <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs font-medium rounded">Inactive</span>
                       )}
                     </div>
                     <p className="text-sm text-gray-600">
