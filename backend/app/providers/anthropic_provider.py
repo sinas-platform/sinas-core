@@ -129,10 +129,10 @@ class AnthropicProvider(BaseLLMProvider):
                         chunk_data["content"] = event.delta.text
                         current_content += event.delta.text
                     elif hasattr(event.delta, "partial_json"):
-                        # Tool call arguments chunk
+                        # Tool call arguments chunk (partial_json is cumulative, not delta)
                         idx = event.index
                         if idx in current_tool_calls:
-                            current_tool_calls[idx]["function"]["arguments"] += event.delta.partial_json
+                            current_tool_calls[idx]["function"]["arguments"] = event.delta.partial_json
                             # Yield tool call deltas
                             chunk_data["tool_calls"] = [current_tool_calls[idx]]
 
