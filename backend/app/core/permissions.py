@@ -43,11 +43,16 @@ def matches_permission_pattern(pattern: str, concrete: str) -> bool:
         # Scope hierarchy: :all grants :own
         matches_permission_pattern("sinas.chats.read:all", "sinas.chats.read:own") -> True
     """
-    # Split by scope separator
+    # Split by scope separator (last colon only)
     try:
         pattern_parts, pattern_scope = pattern.rsplit(":", 1)
         concrete_parts, concrete_scope = concrete.rsplit(":", 1)
     except ValueError:
+        return False
+
+    # Validate scopes - only 'own', 'all', and '*' are valid
+    valid_scopes = {"own", "all", "*"}
+    if pattern_scope not in valid_scopes or concrete_scope not in valid_scopes:
         return False
 
     # Check scope with hierarchy: :all grants :own

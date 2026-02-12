@@ -273,6 +273,9 @@ export function Agents() {
                   required
                   className="input"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Allowed: letters, numbers, spaces, underscores, hyphens, parentheses, colons
+                </p>
               </div>
 
               <div>
