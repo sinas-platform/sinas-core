@@ -223,6 +223,34 @@ class ConfigParser:
                                 )
                             )
 
+        # Validate collection references
+        for i, coll in enumerate(spec.get("collections", [])):
+            if coll["groupName"] not in all_group_names:
+                errors.append(
+                    ConfigValidationError(
+                        path=f"spec.collections[{i}].groupName",
+                        message=f"Referenced group '{coll['groupName']}' not defined",
+                    )
+                )
+            # Validate content filter function reference
+            if coll.get("contentFilterFunction"):
+                if coll["contentFilterFunction"] not in all_function_names:
+                    errors.append(
+                        ConfigValidationError(
+                            path=f"spec.collections[{i}].contentFilterFunction",
+                            message=f"Referenced function '{coll['contentFilterFunction']}' not defined",
+                        )
+                    )
+            # Validate post-upload function reference
+            if coll.get("postUploadFunction"):
+                if coll["postUploadFunction"] not in all_function_names:
+                    errors.append(
+                        ConfigValidationError(
+                            path=f"spec.collections[{i}].postUploadFunction",
+                            message=f"Referenced function '{coll['postUploadFunction']}' not defined",
+                        )
+                    )
+
         # Validate webhook references
         for i, webhook in enumerate(spec.get("webhooks", [])):
             if webhook["groupName"] not in all_group_names:

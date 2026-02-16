@@ -1,12 +1,15 @@
-"""File runtime endpoints - upload, download, list, delete."""
+"""File runtime endpoints - upload, download, list, delete, search."""
+import asyncio
 import base64
-import json
+import logging
 import re
 import uuid as uuid_lib
 from typing import Optional
 
+import jsonschema
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_with_permissions, set_permission_used
@@ -18,7 +21,9 @@ from app.models.function import Function
 from app.schemas.file import (
     CollectionResponse,
     FileDownloadResponse,
+    FileMetadataUpdate,
     FileResponse,
+    FileSearchMatch,
     FileSearchRequest,
     FileSearchResult,
     FileUpload,
@@ -27,6 +32,8 @@ from app.schemas.file import (
 )
 from app.services.execution_engine import executor
 from app.services.file_storage import FileStorage, get_storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -75,6 +82,16 @@ async def upload_file(
     if file_data.visibility == "private" and not coll.allow_private_files:
         raise HTTPException(status_code=400, detail="Private files not allowed in this collection")
 
+    # Validate file metadata against collection schema
+    if coll.metadata_schema:
+        try:
+            jsonschema.validate(instance=file_data.file_metadata, schema=coll.metadata_schema)
+        except jsonschema.ValidationError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File metadata validation failed: {e.message}"
+            )
+
     # Decode file content
     try:
         file_content = base64.b64decode(file_data.content_base64)
@@ -82,11 +99,27 @@ async def upload_file(
         raise HTTPException(status_code=400, detail=f"Invalid base64 content: {str(e)}")
 
     # Check file size
-    file_size_mb = len(file_content) / (1024 * 1024)
+    file_size_bytes = len(file_content)
+    file_size_mb = file_size_bytes / (1024 * 1024)
     if file_size_mb > coll.max_file_size_mb:
         raise HTTPException(
             status_code=413,
             detail=f"File size {file_size_mb:.2f}MB exceeds collection limit {coll.max_file_size_mb}MB"
+        )
+
+    # Check total storage quota
+    total_size_result = await db.execute(
+        select(func.coalesce(func.sum(FileVersion.size_bytes), 0))
+        .join(File, FileVersion.file_id == File.id)
+        .where(File.collection_id == coll.id)
+    )
+    current_total_bytes = total_size_result.scalar()
+    max_total_bytes = coll.max_total_size_gb * 1024 * 1024 * 1024
+    if current_total_bytes + file_size_bytes > max_total_bytes:
+        current_gb = current_total_bytes / (1024 * 1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Collection storage quota exceeded ({current_gb:.2f}GB / {coll.max_total_size_gb}GB)"
         )
 
     # Calculate hash
@@ -101,8 +134,8 @@ async def upload_file(
         filter_namespace, filter_name = coll.content_filter_function.split("/")
 
         # Get function
-        func = await Function.get_by_name(db, filter_namespace, filter_name)
-        if not func:
+        func_record = await Function.get_by_name(db, filter_namespace, filter_name)
+        if not func_record:
             raise HTTPException(
                 status_code=500,
                 detail=f"Content filter function '{coll.content_filter_function}' not found"
@@ -130,7 +163,7 @@ async def upload_file(
                 function_name=filter_name,
                 input_data=filter_input,
                 execution_id=filter_execution_id,
-                trigger_type=TriggerType.MANUAL.value,  # Content filters are manual/system triggers
+                trigger_type=TriggerType.MANUAL.value,
                 trigger_id=f"content_filter:{namespace}/{collection}",
                 user_id=user_id,
             )
@@ -172,7 +205,7 @@ async def upload_file(
                 detail=f"Content filter execution failed: {str(e)}"
             )
 
-    # Check if file name already exists (for this user if private, or anyone if shared is being checked)
+    # Check if file name already exists, using FOR UPDATE to prevent race conditions
     existing_query = select(File).where(
         and_(
             File.collection_id == coll.id,
@@ -192,6 +225,9 @@ async def upload_file(
     else:
         # Check if shared file exists (anyone's)
         existing_query = existing_query.where(File.visibility == "shared")
+
+    # Lock the row to prevent concurrent modifications
+    existing_query = existing_query.with_for_update()
 
     result = await db.execute(existing_query)
     existing_file = result.scalar_one_or_none()
@@ -215,12 +251,28 @@ async def upload_file(
         )
         db.add(file_record)
 
-    await db.commit()
-    await db.refresh(file_record)
+    # Flush to get file_record.id without committing
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Concurrent upload conflict for file '{file_data.name}'"
+        )
 
-    # Store file content
+    # Determine storage path (always unique per version)
     storage_path = f"{namespace}/{collection}/{file_record.id}/v{file_record.current_version}"
-    await storage.save(storage_path, approved_content)
+
+    # Save to storage FIRST, then commit DB (prevents orphan DB records)
+    try:
+        await storage.save(storage_path, approved_content)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save file to storage: {str(e)}"
+        )
 
     # Create version record
     version = FileVersion(
@@ -244,7 +296,19 @@ async def upload_file(
         )
         db.add(evaluation)
 
-    await db.commit()
+    try:
+        await db.commit()
+        await db.refresh(file_record)
+    except Exception as e:
+        # Clean up storage if DB commit fails
+        try:
+            await storage.delete(storage_path)
+        except Exception:
+            logger.warning(f"Failed to clean up storage at {storage_path} after DB error")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save file record: {str(e)}"
+        )
 
     # Trigger post-upload function if configured (async, don't block)
     if coll.post_upload_function:
@@ -265,12 +329,9 @@ async def upload_file(
                 "metadata": approved_metadata,
             }
 
-            # Generate execution ID for post-upload
             post_execution_id = str(uuid_lib.uuid4())
 
             try:
-                # Execute post-upload function in background (don't await)
-                import asyncio
                 asyncio.create_task(
                     executor.execute_function(
                         function_namespace=post_namespace,
@@ -286,7 +347,18 @@ async def upload_file(
                 # Don't fail upload if post-upload trigger fails
                 pass
 
-    return FileResponse.model_validate(file_record)
+    return FileResponse(
+        id=file_record.id,
+        namespace=namespace,
+        name=file_record.name,
+        user_id=file_record.user_id,
+        content_type=file_record.content_type,
+        current_version=file_record.current_version,
+        file_metadata=file_record.file_metadata,
+        visibility=file_record.visibility,
+        created_at=file_record.created_at,
+        updated_at=file_record.updated_at,
+    )
 
 
 @router.get("/{namespace}/{collection}/{filename}", response_model=FileDownloadResponse)
@@ -416,11 +488,221 @@ async def list_files(
         versions = result.scalars().all()
 
         responses.append(FileWithVersions(
-            **FileResponse.model_validate(file_record).model_dump(),
+            id=file_record.id,
+            namespace=namespace,
+            name=file_record.name,
+            user_id=file_record.user_id,
+            content_type=file_record.content_type,
+            current_version=file_record.current_version,
+            file_metadata=file_record.file_metadata,
+            visibility=file_record.visibility,
+            created_at=file_record.created_at,
+            updated_at=file_record.updated_at,
             versions=[FileVersionResponse.model_validate(v) for v in versions]
         ))
 
     return responses
+
+
+@router.post("/{namespace}/{collection}/search", response_model=list[FileSearchResult])
+async def search_files(
+    namespace: str,
+    collection: str,
+    search_request: FileSearchRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_data: tuple = Depends(get_current_user_with_permissions),
+):
+    """Search files in a collection by metadata and/or content."""
+    user_id, permissions = current_user_data
+    storage: FileStorage = get_storage()
+
+    # Reuse list permission for search
+    perm = f"sinas.collections/{namespace}/{collection}.list:own"
+    if not check_permission(permissions, perm):
+        set_permission_used(http_request, perm, has_perm=False)
+        raise HTTPException(status_code=403, detail="Not authorized to search files in this collection")
+    set_permission_used(http_request, perm)
+
+    # Get collection
+    coll = await Collection.get_by_name(db, namespace, collection)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Build base query with visibility rules
+    has_all_perm = check_permission(permissions, f"sinas.collections/{namespace}/{collection}.list:all")
+    query = select(File).where(File.collection_id == coll.id)
+
+    if not has_all_perm:
+        query = query.where(
+            or_(
+                File.user_id == user_id,
+                File.visibility == "shared"
+            )
+        )
+
+    # Apply metadata filters using PostgreSQL JSON containment
+    if search_request.metadata_filter:
+        for key, value in search_request.metadata_filter.items():
+            query = query.where(File.file_metadata[key].as_string() == str(value))
+
+    query = query.order_by(File.name).limit(search_request.limit)
+
+    result = await db.execute(query)
+    files = result.scalars().all()
+
+    results = []
+
+    # If no text query, return files matching metadata filter
+    if not search_request.query:
+        for file_record in files:
+            results.append(FileSearchResult(
+                file_id=file_record.id,
+                filename=file_record.name,
+                version=file_record.current_version,
+                matches=[],
+            ))
+        return results
+
+    # Compile regex pattern
+    try:
+        pattern = re.compile(search_request.query)
+    except re.error as e:
+        raise HTTPException(status_code=400, detail=f"Invalid regex pattern: {str(e)}")
+
+    # Known binary content types to skip
+    BINARY_PREFIXES = ("image/", "audio/", "video/", "font/")
+    BINARY_TYPES = {
+        "application/pdf", "application/zip", "application/gzip",
+        "application/x-tar", "application/x-bzip2", "application/x-7z-compressed",
+        "application/vnd.openxmlformats", "application/msword",
+        "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+    }
+
+    # Search file content
+    for file_record in files:
+        # Skip known binary types
+        ct = file_record.content_type
+        if any(ct.startswith(p) for p in BINARY_PREFIXES) or ct in BINARY_TYPES:
+            continue
+
+        # Get current version
+        ver_result = await db.execute(
+            select(FileVersion).where(
+                and_(
+                    FileVersion.file_id == file_record.id,
+                    FileVersion.version_number == file_record.current_version
+                )
+            )
+        )
+        file_version = ver_result.scalar_one_or_none()
+        if not file_version:
+            continue
+
+        # Read file content — try to decode as text, skip if binary
+        try:
+            content = await storage.read(file_version.storage_path)
+            text = content.decode("utf-8")
+        except (Exception, UnicodeDecodeError):
+            continue
+
+        lines = text.split("\n")
+        matches = []
+
+        for i, line in enumerate(lines):
+            if pattern.search(line):
+                # Build context (2 lines before and after)
+                context_start = max(0, i - 2)
+                context_end = min(len(lines), i + 3)
+                context = lines[context_start:context_end]
+
+                matches.append(FileSearchMatch(
+                    line=i + 1,
+                    text=line,
+                    context=context,
+                ))
+
+        if matches:
+            results.append(FileSearchResult(
+                file_id=file_record.id,
+                filename=file_record.name,
+                version=file_record.current_version,
+                matches=matches,
+            ))
+
+    return results
+
+
+@router.patch("/{namespace}/{collection}/{filename}", response_model=FileResponse)
+async def update_file_metadata(
+    namespace: str,
+    collection: str,
+    filename: str,
+    update_data: FileMetadataUpdate,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user_data: tuple = Depends(get_current_user_with_permissions),
+):
+    """Update file metadata."""
+    user_id, permissions = current_user_data
+
+    # Reuse upload permission for metadata edits
+    perm = f"sinas.collections/{namespace}/{collection}.upload:own"
+    if not check_permission(permissions, perm):
+        set_permission_used(http_request, perm, has_perm=False)
+        raise HTTPException(status_code=403, detail="Not authorized to update files in this collection")
+    set_permission_used(http_request, perm)
+
+    # Get collection
+    coll = await Collection.get_by_name(db, namespace, collection)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Get file
+    result = await db.execute(
+        select(File).where(
+            and_(
+                File.collection_id == coll.id,
+                File.name == filename
+            )
+        )
+    )
+    file_record = result.scalar_one_or_none()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Check ownership
+    has_all_perm = check_permission(permissions, f"sinas.collections/{namespace}/{collection}.upload:all")
+    if str(file_record.user_id) != user_id and not has_all_perm:
+        raise HTTPException(status_code=403, detail="Not authorized to update this file")
+
+    # Validate metadata against collection schema
+    if coll.metadata_schema:
+        try:
+            jsonschema.validate(instance=update_data.file_metadata, schema=coll.metadata_schema)
+        except jsonschema.ValidationError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File metadata validation failed: {e.message}"
+            )
+
+    file_record.file_metadata = update_data.file_metadata
+    await db.commit()
+    await db.refresh(file_record)
+
+    return FileResponse(
+        id=file_record.id,
+        namespace=namespace,
+        name=file_record.name,
+        user_id=file_record.user_id,
+        content_type=file_record.content_type,
+        current_version=file_record.current_version,
+        file_metadata=file_record.file_metadata,
+        visibility=file_record.visibility,
+        created_at=file_record.created_at,
+        updated_at=file_record.updated_at,
+    )
 
 
 @router.delete("/{namespace}/{collection}/{filename}", status_code=status.HTTP_204_NO_CONTENT)
@@ -467,12 +749,13 @@ async def delete_file(
     if file_record.visibility == "private" and str(file_record.user_id) != user_id and not has_all_perm:
         raise HTTPException(status_code=403, detail="Not authorized to delete this private file")
 
-    # Delete physical files
+    # Get all versions of this file
     result = await db.execute(
         select(FileVersion).where(FileVersion.file_id == file_record.id)
     )
     versions = result.scalars().all()
 
+    # Delete physical files
     for version in versions:
         try:
             await storage.delete(version.storage_path)

@@ -150,6 +150,21 @@ class MCPServerConfig(BaseModel):
     groupName: str
 
 
+class CollectionConfig(BaseModel):
+    """Collection configuration"""
+
+    namespace: str = "default"
+    name: str
+    groupName: str
+    metadataSchema: Optional[dict[str, Any]] = None
+    contentFilterFunction: Optional[str] = None  # "namespace/name" format
+    postUploadFunction: Optional[str] = None  # "namespace/name" format
+    maxFileSizeMb: int = 100
+    maxTotalSizeGb: int = 10
+    allowSharedFiles: bool = True
+    allowPrivateFiles: bool = True
+
+
 class ConfigSpec(BaseModel):
     """Configuration specification"""
 
@@ -159,6 +174,7 @@ class ConfigSpec(BaseModel):
     mcpServers: list[MCPServerConfig] = Field(default_factory=list)
     skills: list[SkillConfig] = Field(default_factory=list)
     functions: list[FunctionConfig] = Field(default_factory=list)
+    collections: list[CollectionConfig] = Field(default_factory=list)
     agents: list[AgentConfig] = Field(default_factory=list)
     webhooks: list[WebhookConfig] = Field(default_factory=list)
     schedules: list[ScheduleConfig] = Field(default_factory=list)

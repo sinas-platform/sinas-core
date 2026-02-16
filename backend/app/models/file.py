@@ -42,6 +42,11 @@ class Collection(Base, PermissionMixin):
     allow_shared_files: Mapped[bool] = mapped_column(default=True, nullable=False)
     allow_private_files: Mapped[bool] = mapped_column(default=True, nullable=False)
 
+    # Config management
+    managed_by: Mapped[Optional[str]] = mapped_column(Text)
+    config_name: Mapped[Optional[str]] = mapped_column(Text)
+    config_checksum: Mapped[Optional[str]] = mapped_column(Text)
+
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 

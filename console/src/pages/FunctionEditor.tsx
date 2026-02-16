@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { ArrowLeft, Save, Trash2, Package } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Package, ChevronDown, ChevronRight, Filter, Upload, Info } from 'lucide-react';
 import CodeEditor from '@uiw/react-textarea-code-editor';
 import { JSONSchemaEditor } from '../components/JSONSchemaEditor';
 
@@ -74,6 +74,28 @@ export function FunctionEditor() {
     queryFn: () => apiClient.getFunction(namespace!, name!),
     enabled: !isNew && !!namespace && !!name,
   });
+
+  const { data: collections } = useQuery({
+    queryKey: ['collections'],
+    queryFn: () => apiClient.listCollections(),
+    retry: false,
+  });
+
+  // Detect if this function is used as a collection trigger
+  const triggerRoles = useMemo(() => {
+    const funcId = `${formData.namespace}/${formData.name}`;
+    const roles: { contentFilter: string[]; postUpload: string[] } = { contentFilter: [], postUpload: [] };
+    if (!collections || !formData.name) return roles;
+    for (const coll of collections) {
+      const collName = `${coll.namespace}/${coll.name}`;
+      if (coll.content_filter_function === funcId) roles.contentFilter.push(collName);
+      if (coll.post_upload_function === funcId) roles.postUpload.push(collName);
+    }
+    return roles;
+  }, [collections, formData.namespace, formData.name]);
+
+  const isCollectionTrigger = triggerRoles.contentFilter.length > 0 || triggerRoles.postUpload.length > 0;
+  const [showTriggerDocs, setShowTriggerDocs] = useState(false);
 
   // Load function data when available
   useEffect(() => {
@@ -379,6 +401,98 @@ export function FunctionEditor() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Collection Trigger Reference */}
+        <div className="card border-blue-200 bg-blue-50/50">
+          <button
+            type="button"
+            onClick={() => setShowTriggerDocs(!showTriggerDocs)}
+            className="flex items-center w-full text-left"
+          >
+            <Info className="w-5 h-5 text-blue-500 mr-2 flex-shrink-0" />
+            <div className="flex-1">
+              <span className="text-sm font-medium text-gray-900">Collection trigger reference</span>
+              {isCollectionTrigger && (
+                <span className="text-xs text-gray-500 ml-2">
+                  {triggerRoles.contentFilter.length > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 mr-1">
+                      <Filter className="w-3 h-3 mr-1" />
+                      Content filter for {triggerRoles.contentFilter.join(', ')}
+                    </span>
+                  )}
+                  {triggerRoles.postUpload.length > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      <Upload className="w-3 h-3 mr-1" />
+                      Post-upload for {triggerRoles.postUpload.join(', ')}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            {showTriggerDocs ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          </button>
+          {showTriggerDocs && (
+            <div className="mt-4 space-y-4">
+              <p className="text-xs text-gray-600">
+                Functions can be used as collection triggers. Set this in the collection's configuration under Content Filter or Post-Upload function.
+              </p>
+              <div>
+                <div className="flex items-center mb-2">
+                  <Filter className="w-4 h-4 text-orange-500 mr-2" />
+                  <h4 className="text-sm font-semibold text-gray-900">Content Filter Function</h4>
+                </div>
+                <p className="text-xs text-gray-600 mb-2">
+                  Runs before a file is stored. Return <code className="font-mono bg-white px-1 rounded">approved: false</code> to reject the upload.
+                </p>
+                <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                  <pre className="text-xs text-gray-100 font-mono">{`# input dict received by this function:
+{
+    "content_base64": str,    # Base64-encoded file content
+    "namespace": str,         # Collection namespace
+    "collection": str,        # Collection name
+    "filename": str,          # Uploaded file name
+    "content_type": str,      # MIME type (e.g. "text/plain")
+    "size_bytes": int,        # File size in bytes
+    "user_metadata": dict,    # Metadata provided by uploader
+    "user_id": str,           # Uploader's user ID
+}
+
+# Expected return format:
+{
+    "approved": True,              # Required: allow or reject
+    "reason": "...",               # Optional: rejection reason
+    "modified_content": "base64",  # Optional: replace file content
+    "metadata": {"key": "value"},  # Optional: merge into metadata
+}`}</pre>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center mb-2">
+                  <Upload className="w-4 h-4 text-green-500 mr-2" />
+                  <h4 className="text-sm font-semibold text-gray-900">Post-Upload Function</h4>
+                </div>
+                <p className="text-xs text-gray-600 mb-2">
+                  Runs asynchronously after the file is stored. Does not block the upload response.
+                </p>
+                <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                  <pre className="text-xs text-gray-100 font-mono">{`# input dict received by this function:
+{
+    "file_id": str,       # UUID of the stored file
+    "namespace": str,     # Collection namespace
+    "collection": str,    # Collection name
+    "filename": str,      # File name
+    "version": int,       # Version number (1 for new files)
+    "file_path": str,     # Storage path
+    "user_id": str,       # Uploader's user ID
+    "metadata": dict,     # Final file metadata (after filter)
+}
+
+# Return value is ignored (fire-and-forget).`}</pre>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Input Schema */}

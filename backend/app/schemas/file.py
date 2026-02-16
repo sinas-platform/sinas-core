@@ -136,6 +136,12 @@ class FileSearchResult(BaseModel):
     matches: list[FileSearchMatch]
 
 
+class FileMetadataUpdate(BaseModel):
+    """Schema for updating file metadata."""
+
+    file_metadata: dict[str, Any]
+
+
 class ContentFilterResult(BaseModel):
     """Schema for content filter function result."""
 
