@@ -568,7 +568,10 @@ async def generate_temp_url(
     url = generate_file_url(str(file_record.id), version_number, expires_in=expires_in)
     if not url:
         # Fallback to data URL for localhost
-        url = generate_file_data_url(file_version.storage_path, file_record.content_type)
+        try:
+            url = await generate_file_data_url(file_version.storage_path, file_record.content_type)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="File content not found in storage")
 
     return {
         "url": url,

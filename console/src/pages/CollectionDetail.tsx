@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { apiClient } from '../lib/api';
-import { Upload, Download, Trash2, ChevronDown, ChevronRight, ArrowLeft, File as FileIcon, Pencil, Search, X, Plus, Minus } from 'lucide-react';
+import { Upload, Download, Trash2, ChevronDown, ChevronRight, ArrowLeft, File as FileIcon, Pencil, Search, X, Plus, Minus, Link2 } from 'lucide-react';
 import { SchemaFormField } from '../components/SchemaFormField';
 import { useState, useRef } from 'react';
 import type { FileWithVersions, FileSearchResult } from '../types';
@@ -52,6 +52,23 @@ export function CollectionDetail() {
   const [searchResults, setSearchResults] = useState<FileSearchResult[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
+  const [urlLoading, setUrlLoading] = useState<string | null>(null);
+
+  const handleCopyUrl = async (file: FileWithVersions) => {
+    setUrlLoading(file.id);
+    try {
+      const result = await apiClient.generateFileUrl(namespace!, name!, file.name);
+      await navigator.clipboard.writeText(result.url);
+      setCopiedFileId(file.id);
+      setTimeout(() => setCopiedFileId(null), 2000);
+    } catch (err) {
+      console.error('Failed to generate URL:', err);
+    } finally {
+      setUrlLoading(null);
+    }
+  };
 
   const { data: collection, isLoading: collectionLoading, error: collectionError } = useQuery({
     queryKey: ['collection', namespace, name],
@@ -554,6 +571,20 @@ export function CollectionDetail() {
                         title="Download latest version"
                       >
                         <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleCopyUrl(file)}
+                        className={`btn btn-sm ${copiedFileId === file.id ? 'btn-primary' : 'btn-secondary'}`}
+                        title="Generate & copy temporary public URL"
+                        disabled={urlLoading === file.id}
+                      >
+                        {urlLoading === file.id ? (
+                          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        ) : copiedFileId === file.id ? (
+                          <span className="text-xs">Copied!</span>
+                        ) : (
+                          <Link2 className="w-4 h-4" />
+                        )}
                       </button>
                       <button
                         onClick={() => handleDelete(file)}

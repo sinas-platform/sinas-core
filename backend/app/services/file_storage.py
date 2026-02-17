@@ -223,15 +223,13 @@ def generate_file_url(file_id: str, version: int, expires_in: int = 3600) -> Opt
     return f"https://{domain}/api/runtime/files/serve/{token}"
 
 
-def generate_file_data_url(storage_path: str, content_type: str) -> str:
+async def generate_file_data_url(storage_path: str, content_type: str) -> str:
     """
     Read a file from storage and return a base64 data URL.
 
     Used as fallback when DOMAIN is localhost (LLM providers can't reach the server).
     """
     storage = get_storage()
-    # Use synchronous read for LocalFileStorage
-    full_path = storage._get_full_path(storage_path)
-    data = full_path.read_bytes()
+    data = await storage.read(storage_path)
     b64 = base64.b64encode(data).decode("utf-8")
     return f"data:{content_type};base64,{b64}"

@@ -768,6 +768,14 @@ class APIClient {
     const response = await this.runtimeClient.post(`/files/${namespace}/${collection}/search`, request);
     return response.data;
   }
+
+  async generateFileUrl(namespace: string, collection: string, filename: string, version?: number, expiresIn?: number): Promise<{ url: string; filename: string; content_type: string; version: number; expires_in: number }> {
+    const params: Record<string, any> = {};
+    if (version) params.version = version;
+    if (expiresIn) params.expires_in = expiresIn;
+    const response = await this.runtimeClient.post(`/files/${namespace}/${collection}/${filename}/url`, null, { params });
+    return response.data;
+  }
 }
 
 

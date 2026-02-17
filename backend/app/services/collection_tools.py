@@ -42,6 +42,23 @@ def _is_text_content(content_type: str) -> bool:
     return False
 
 
+def _flatten_metadata(metadata: dict) -> list[str]:
+    """Recursively flatten metadata dict values into a list of strings."""
+    values = []
+    for v in metadata.values():
+        if isinstance(v, dict):
+            values.extend(_flatten_metadata(v))
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, dict):
+                    values.extend(_flatten_metadata(item))
+                else:
+                    values.append(str(item))
+        else:
+            values.append(str(v))
+    return values
+
+
 def _safe_tool_name(prefix: str, namespace: str, name: str) -> str:
     """Create a safe function name from prefix + namespace/name."""
     safe = f"{prefix}_{namespace}_{name}".replace("-", "_").replace(" ", "_")
@@ -83,7 +100,7 @@ class CollectionToolConverter:
                 "type": "function",
                 "function": {
                     "name": search_name,
-                    "description": f"Search files in the '{namespace}/{name}' collection. Returns matching filenames, content types, versions, and metadata.",
+                    "description": f"Search files in the '{namespace}/{name}' collection by name, metadata, or content. Returns matching filenames, content types, versions, and metadata. Use get_file to retrieve the actual content or a shareable URL for a specific file.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -111,7 +128,7 @@ class CollectionToolConverter:
                 "type": "function",
                 "function": {
                     "name": get_name,
-                    "description": f"Get a file from the '{namespace}/{name}' collection. For text files, returns content inline. For images/binary files, returns a URL.",
+                    "description": f"Get a file from the '{namespace}/{name}' collection. For text files, returns content inline. For images and other binary files, returns a temporary public URL that can be shared. Always use this tool to get file URLs — never construct URLs yourself.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -196,47 +213,61 @@ class CollectionToolConverter:
         result = await db.execute(query)
         files = result.scalars().all()
 
-        # If text query provided, filter by content
+        # If text query provided, filter by filename, metadata, and content
         text_query = arguments.get("query")
         if text_query:
             import re as re_module
 
+            # Split query into search terms for flexible matching
+            # "Conformity logo" -> ["conformity", "logo"]
+            terms = [t.lower() for t in text_query.split() if t.strip()]
+
+            # Also try the full query as a regex for content search
             try:
-                pattern = re_module.compile(text_query, re_module.IGNORECASE)
+                content_pattern = re_module.compile(text_query, re_module.IGNORECASE)
             except re_module.error:
-                # Fall back to literal match
-                pattern = re_module.compile(re_module.escape(text_query), re_module.IGNORECASE)
+                content_pattern = re_module.compile(re_module.escape(text_query), re_module.IGNORECASE)
 
             storage = get_storage()
             matching_files = []
 
             for file_record in files:
-                if not _is_text_content(file_record.content_type):
-                    # Include non-text files by filename match only
-                    if pattern.search(file_record.name):
-                        matching_files.append(file_record)
+                # 1. Match filename: all terms must appear (ignoring separators)
+                # Normalize filename: "conformity-logo.png" -> "conformity logo png"
+                normalized_name = re_module.sub(r"[_\-./\\]", " ", file_record.name).lower()
+                name_match = any(term in normalized_name for term in terms)
+
+                # 2. Match metadata values: flatten all values to a searchable string
+                meta_str = " ".join(
+                    str(v).lower() for v in _flatten_metadata(file_record.file_metadata)
+                )
+                meta_match = any(term in meta_str for term in terms)
+
+                if name_match or meta_match:
+                    matching_files.append(file_record)
                     continue
 
-                # Search text content
-                ver_result = await db.execute(
-                    select(FileVersion).where(
-                        and_(
-                            FileVersion.file_id == file_record.id,
-                            FileVersion.version_number == file_record.current_version,
+                # 3. For text files, also search content with regex
+                if _is_text_content(file_record.content_type):
+                    ver_result = await db.execute(
+                        select(FileVersion).where(
+                            and_(
+                                FileVersion.file_id == file_record.id,
+                                FileVersion.version_number == file_record.current_version,
+                            )
                         )
                     )
-                )
-                file_version = ver_result.scalar_one_or_none()
-                if not file_version:
-                    continue
+                    file_version = ver_result.scalar_one_or_none()
+                    if not file_version:
+                        continue
 
-                try:
-                    content = await storage.read(file_version.storage_path)
-                    text = content.decode("utf-8")
-                    if pattern.search(text) or pattern.search(file_record.name):
-                        matching_files.append(file_record)
-                except Exception:
-                    continue
+                    try:
+                        content = await storage.read(file_version.storage_path)
+                        text = content.decode("utf-8")
+                        if content_pattern.search(text):
+                            matching_files.append(file_record)
+                    except Exception:
+                        continue
 
             files = matching_files
 
@@ -320,7 +351,7 @@ class CollectionToolConverter:
 
         # Fallback to data URL for localhost
         try:
-            data_url = generate_file_data_url(file_version.storage_path, file_record.content_type)
+            data_url = await generate_file_data_url(file_version.storage_path, file_record.content_type)
             return {**base_info, "url": data_url}
         except Exception as e:
             return {**base_info, "error": f"Failed to generate file URL: {str(e)}"}
