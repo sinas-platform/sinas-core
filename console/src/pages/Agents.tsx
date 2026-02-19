@@ -124,7 +124,10 @@ export function Agents() {
                     </p>
                   </div>
                 </div>
-                <div className="ml-2 flex-shrink-0">
+                <div className="ml-2 flex-shrink-0 flex items-center gap-2">
+                  {agent.is_default && (
+                    <span className="text-xs font-medium bg-primary-100 text-primary-700 px-2 py-0.5 rounded">Default</span>
+                  )}
                   {agent.is_active ? (
                     <CheckCircle className="w-5 h-5 text-green-500" />
                   ) : (

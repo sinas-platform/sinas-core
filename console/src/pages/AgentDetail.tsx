@@ -73,6 +73,7 @@ export function AgentDetail() {
         output_schema: agent.output_schema || {},
         initial_messages: agent.initial_messages || [],
         is_active: agent.is_active,
+        is_default: agent.is_default,
         enabled_functions: agent.enabled_functions || [],
         enabled_agents: agent.enabled_agents || [],
         enabled_skills: agent.enabled_skills || [],
@@ -225,17 +226,31 @@ export function AgentDetail() {
               </p>
             </div>
 
-            <div className="flex items-center">
-              <input
-                id="is_active"
-                type="checkbox"
-                checked={formData.is_active ?? agent.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-              />
-              <label htmlFor="is_active" className="ml-2 text-sm text-gray-700">
-                Active (agent can be used in chats)
-              </label>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center">
+                <input
+                  id="is_active"
+                  type="checkbox"
+                  checked={formData.is_active ?? agent.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                />
+                <label htmlFor="is_active" className="ml-2 text-sm text-gray-700">
+                  Active
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="is_default"
+                  type="checkbox"
+                  checked={formData.is_default ?? agent.is_default}
+                  onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
+                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                />
+                <label htmlFor="is_default" className="ml-2 text-sm text-gray-700">
+                  Default agent
+                </label>
+              </div>
             </div>
           </div>
         </div>
