@@ -111,19 +111,19 @@ class FunctionScheduler:
         input_data: dict[str, Any],
         user_id: str,
     ):
-        """Execute a scheduled function."""
+        """Enqueue a scheduled function for execution via the job queue."""
         execution_id = str(uuid.uuid4())
 
         try:
             logger.info(
-                f"Executing scheduled function: {function_namespace}/{function_name} (job: {job_id})"
+                f"Enqueuing scheduled function: {function_namespace}/{function_name} (job: {job_id})"
             )
 
             # Update last_run time in database
             await self._update_job_last_run(job_id)
 
-            # Execute the function
-            result = await executor.execute_function(
+            # Enqueue the function for async execution
+            enqueue_result = await executor.enqueue_function(
                 function_namespace=function_namespace,
                 function_name=function_name,
                 input_data=input_data,
@@ -134,11 +134,12 @@ class FunctionScheduler:
             )
 
             logger.info(
-                f"Scheduled function {function_namespace}/{function_name} completed successfully: {result}"
+                f"Scheduled function {function_namespace}/{function_name} enqueued: "
+                f"job_id={enqueue_result['job_id']}"
             )
 
         except Exception as e:
-            logger.error(f"Scheduled function {function_namespace}/{function_name} failed: {e}")
+            logger.error(f"Scheduled function {function_namespace}/{function_name} enqueue failed: {e}")
 
     async def _update_job_last_run(self, job_id: str):
         """Update the last_run and next_run timestamps for a scheduled job."""

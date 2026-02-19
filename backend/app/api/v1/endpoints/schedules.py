@@ -1,5 +1,7 @@
 """Schedules API endpoints."""
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,10 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.core.database import get_db
 from app.core.permissions import check_permission
+from app.core.redis import get_redis
 from app.models.schedule import ScheduledJob
 from app.schemas import ScheduledJobCreate, ScheduledJobResponse, ScheduledJobUpdate
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
+
+SCHEDULER_CHANNEL = "sinas:scheduler:jobs"
+
+
+async def _notify_scheduler(action: str, job_id: str) -> None:
+    """Publish a job change event to the scheduler service via Redis pub/sub."""
+    redis = await get_redis()
+    await redis.publish(SCHEDULER_CHANNEL, json.dumps({"action": action, "job_id": job_id}))
 
 
 @router.post("", response_model=ScheduledJobResponse)
@@ -68,7 +79,7 @@ async def create_schedule(
     await db.commit()
     await db.refresh(schedule)
 
-    # TODO: Register job with scheduler
+    await _notify_scheduler("add", str(schedule.id))
 
     response = ScheduledJobResponse.model_validate(schedule)
 
@@ -184,7 +195,7 @@ async def update_schedule(
     await db.commit()
     await db.refresh(schedule)
 
-    # TODO: Update job in scheduler
+    await _notify_scheduler("update", str(schedule.id))
 
     response = ScheduledJobResponse.model_validate(schedule)
 
@@ -215,7 +226,7 @@ async def delete_schedule(
             raise HTTPException(status_code=403, detail="Not authorized to delete this schedule")
         set_permission_used(request, "sinas.schedules.delete:own")
 
-    # TODO: Remove job from scheduler
+    await _notify_scheduler("remove", str(schedule.id))
 
     await db.delete(schedule)
     await db.commit()

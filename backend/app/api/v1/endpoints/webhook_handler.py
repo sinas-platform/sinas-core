@@ -137,8 +137,8 @@ async def handle_webhook(path: str, request: Request, db: AsyncSession = Depends
         # Extract chat_id from header if provided (for chat-originated calls)
         chat_id = request.headers.get("x-chat-id")
 
-        # Execute the function
-        result = await executor.execute_function(
+        # Enqueue the function for async execution
+        enqueue_result = await executor.enqueue_function(
             function_namespace=webhook.function_namespace,
             function_name=webhook.function_name,
             input_data=final_input,
@@ -149,7 +149,17 @@ async def handle_webhook(path: str, request: Request, db: AsyncSession = Depends
             chat_id=chat_id,
         )
 
-        return {"success": True, "execution_id": execution_id, "result": result}
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "status": "queued",
+                "execution_id": execution_id,
+                "job_id": enqueue_result["job_id"],
+            },
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Function execution failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Function enqueue failed: {str(e)}")

@@ -58,6 +58,8 @@ class SharedWorkerManager:
         """
         Initialize worker manager on startup.
         Re-discovers existing worker containers and scales to default count.
+
+        Only called by the backend process (main.py), not by queue workers.
         """
         if self._initialized:
             return
