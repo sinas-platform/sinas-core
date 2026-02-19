@@ -1,4 +1,4 @@
-"""remove MCP servers and agent MCP fields
+"""remove MCP servers, agent MCP fields, and per-message function overrides
 
 Revision ID: a6b7c8d9e0f1
 Revises: f5a6b7c8d9e0
@@ -21,12 +21,11 @@ def upgrade() -> None:
     op.drop_column('agents', 'enabled_mcp_tools')
     op.drop_column('agents', 'mcp_tool_parameters')
 
-    # Drop MCP column from messages
+    # Drop unused per-message override columns from messages
     op.drop_column('messages', 'enabled_mcp_tools')
+    op.drop_column('messages', 'enabled_functions')
 
-    # Drop mcp_servers table
-    op.drop_index(op.f('ix_mcp_servers_name'), table_name='mcp_servers')
-    op.drop_index(op.f('ix_mcp_servers_group_id'), table_name='mcp_servers')
+    # Drop mcp_servers table (drop_table cascades to indexes)
     op.drop_table('mcp_servers')
 
 
@@ -59,5 +58,6 @@ def downgrade() -> None:
     op.add_column('agents', sa.Column('enabled_mcp_tools', sa.JSON(), nullable=True))
     op.add_column('agents', sa.Column('mcp_tool_parameters', sa.JSON(), nullable=True))
 
-    # Re-add MCP column to messages
+    # Re-add per-message override columns to messages
     op.add_column('messages', sa.Column('enabled_mcp_tools', sa.JSON(), nullable=True))
+    op.add_column('messages', sa.Column('enabled_functions', sa.JSON(), nullable=True))

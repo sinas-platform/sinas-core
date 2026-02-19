@@ -150,8 +150,6 @@ class MessageService:
         provider: Optional[str],
         model: Optional[str],
         temperature: float,
-        enabled_functions: Optional[list[str]],
-        disabled_functions: Optional[list[str]],
         inject_context: bool,
         state_namespaces: Optional[list[str]],
         context_limit: int,
@@ -286,8 +284,6 @@ class MessageService:
         tools = await self._get_available_tools(
             user_id=user_id,
             chat=chat,
-            message_enabled_functions=enabled_functions,
-            message_disabled_functions=disabled_functions,
         )
 
         # Create LLM provider
@@ -358,8 +354,6 @@ class MessageService:
             provider=None,
             model=None,
             temperature=None,
-            enabled_functions=None,
-            disabled_functions=None,
             inject_context=True,
             state_namespaces=None,
             context_limit=5,
@@ -472,8 +466,6 @@ class MessageService:
             provider=None,
             model=None,
             temperature=None,
-            enabled_functions=None,
-            disabled_functions=None,
             inject_context=True,
             state_namespaces=None,
             context_limit=5,
@@ -1104,8 +1096,6 @@ class MessageService:
         self,
         user_id: str,
         chat: Chat,
-        message_enabled_functions: Optional[list[str]],
-        message_disabled_functions: Optional[list[str]],
     ) -> list[dict[str, Any]]:
         """Get all available tools (functions + context + agents + execution continuation)."""
         tools = []
@@ -1146,27 +1136,17 @@ class MessageService:
             agent_tools = await self._get_agent_tools(resolved_agents)
             tools.extend(agent_tools)
 
-        # Determine function configuration
-        # Priority: message override > agent config
-        # Note: Empty list [] means no functions, None means all functions from agent
-        if message_enabled_functions is not None:
-            function_enabled = message_enabled_functions
-        else:
-            function_enabled = agent.enabled_functions
-        function_disabled = message_disabled_functions or []
-
         # Get agent input context for function parameter templating
         agent_input_context = {}
         if chat.chat_metadata and "agent_input" in chat.chat_metadata:
             agent_input_context = chat.chat_metadata["agent_input"]
 
         # Get function tools (only if list has items - opt-in)
-        if function_enabled and len(function_enabled) > 0:
+        if agent.enabled_functions and len(agent.enabled_functions) > 0:
             function_tools = await self.function_converter.get_available_functions(
                 db=self.db,
                 user_id=user_id,
-                enabled_functions=function_enabled,
-                disabled_functions=function_disabled,
+                enabled_functions=agent.enabled_functions,
                 function_parameters=agent.function_parameters,
                 agent_input_context=agent_input_context,
             )

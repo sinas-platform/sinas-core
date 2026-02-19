@@ -48,9 +48,6 @@ class Message(Base):
     tool_calls: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON)
     tool_call_id: Mapped[Optional[str]] = mapped_column(String(255))
     name: Mapped[Optional[str]] = mapped_column(String(255))  # For tool response messages
-    enabled_functions: Mapped[Optional[list[str]]] = mapped_column(
-        JSON
-    )  # Per-message function overrides
     created_at: Mapped[created_at]
 
     # Relationships
