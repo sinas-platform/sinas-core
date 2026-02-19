@@ -100,6 +100,12 @@ app.add_middleware(
 # Add request logging middleware
 app.add_middleware(RequestLoggerMiddleware)
 
+_servers = [
+    {"url": "/", "description": "Runtime API"},
+    {"url": "/api/v1", "description": "Management API"},
+    {"url": "/adapters/openai", "description": "OpenAI Adapter"},
+]
+
 # Create management API sub-application
 management_app = FastAPI(
     title="SINAS Management API",
@@ -107,6 +113,7 @@ management_app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     openapi_url="/openapi.json",
+    servers=_servers,
 )
 
 # Include management routes in sub-app
@@ -114,6 +121,31 @@ management_app.include_router(api_v1_router)
 
 # Mount management app at /api/v1
 app.mount("/api/v1", management_app)
+
+# Create OpenAI adapter sub-application
+adapters_openai_app = FastAPI(
+    title="SINAS OpenAI Adapter",
+    description="OpenAI SDK-compatible API for SINAS agents and LLM providers",
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+    servers=_servers,
+)
+
+adapters_openai_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from app.adapters.openai.endpoints import router as openai_adapter_router
+
+adapters_openai_app.include_router(openai_adapter_router)
+
+# Mount adapter app at /adapters/openai
+app.mount("/adapters/openai", adapters_openai_app)
 
 # Include runtime API routes (root level)
 app.include_router(runtime_router)

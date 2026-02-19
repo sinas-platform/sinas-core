@@ -42,6 +42,7 @@ class AgentCreate(BaseModel):
     state_namespaces_readonly: Optional[list[str]] = None  # Readonly state namespaces
     state_namespaces_readwrite: Optional[list[str]] = None  # Read-write state namespaces
     enabled_collections: Optional[list[str]] = None  # List of "namespace/name" collection references
+    is_default: Optional[bool] = False
 
 
 class AgentUpdate(BaseModel):
@@ -74,6 +75,7 @@ class AgentUpdate(BaseModel):
     state_namespaces_readwrite: Optional[list[str]] = None
     enabled_collections: Optional[list[str]] = None  # List of "namespace/name" collection references
     is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
 
 
 class AgentResponse(BaseModel):
@@ -100,6 +102,7 @@ class AgentResponse(BaseModel):
     state_namespaces_readwrite: list[str]
     enabled_collections: list[str]
     is_active: bool
+    is_default: bool
     created_at: datetime
     updated_at: datetime
 

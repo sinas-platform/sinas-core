@@ -895,6 +895,7 @@ class ConfigApplyService:
                         "enabled_collections": sorted(agent_config.enabledCollections)
                         if agent_config.enabledCollections
                         else [],
+                        "is_default": agent_config.isDefault,
                     }
                 )
 
@@ -934,6 +935,13 @@ class ConfigApplyService:
                         existing.state_namespaces_readonly = agent_config.stateNamespacesReadonly
                         existing.state_namespaces_readwrite = agent_config.stateNamespacesReadwrite
                         existing.enabled_collections = agent_config.enabledCollections
+                        if agent_config.isDefault:
+                            await self.db.execute(
+                                Agent.__table__.update()
+                                .where(Agent.id != existing.id)
+                                .values(is_default=False)
+                            )
+                        existing.is_default = agent_config.isDefault
                         existing.config_checksum = config_hash
                         existing.updated_at = datetime.utcnow()
 
@@ -966,6 +974,11 @@ class ConfigApplyService:
                                 agent_config.llmProviderName
                             )
 
+                        if agent_config.isDefault:
+                            await self.db.execute(
+                                Agent.__table__.update().values(is_default=False)
+                            )
+
                         new_agent = Agent(
                             namespace=agent_config.namespace,
                             name=agent_config.name,
@@ -983,6 +996,7 @@ class ConfigApplyService:
                             state_namespaces_readonly=agent_config.stateNamespacesReadonly,
                             state_namespaces_readwrite=agent_config.stateNamespacesReadwrite,
                             enabled_collections=agent_config.enabledCollections,
+                            is_default=agent_config.isDefault,
                             user_id=member.user_id,
                             group_id=group_id,
                             is_active=True,

@@ -189,6 +189,7 @@ export interface Agent {
   state_namespaces_readwrite: string[] | null;
   enabled_collections: string[];
   is_active: boolean;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -214,6 +215,7 @@ export interface AgentCreate {
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
+  is_default?: boolean;
 }
 
 export interface AgentUpdate {
@@ -238,6 +240,7 @@ export interface AgentUpdate {
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
   is_active?: boolean;
+  is_default?: boolean;
 }
 
 // MCP Servers

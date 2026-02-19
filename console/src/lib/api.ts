@@ -392,6 +392,11 @@ class APIClient {
     });
   }
 
+  async getPermissionReference(): Promise<Array<{ resource: string; description: string; actions: string[]; namespaced?: boolean; adminOnly?: boolean }>> {
+    const response = await this.configClient.get('/roles/permissions/reference');
+    return response.data;
+  }
+
   // Users
   async listUsers(): Promise<any[]> {
     const response = await this.configClient.get('/users');

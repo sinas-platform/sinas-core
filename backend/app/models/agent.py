@@ -85,6 +85,7 @@ class Agent(Base, PermissionMixin):
     )  # List of "namespace/name" collection references
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
     # Config tracking

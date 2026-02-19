@@ -1,7 +1,7 @@
 """Agent endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -51,6 +51,10 @@ async def create_agent(
             status_code=400,
             detail=f"Agent '{agent_data.namespace}/{agent_data.name}' already exists",
         )
+    # If setting as default, unset other defaults
+    if agent_data.is_default:
+        await db.execute(update(Agent).values(is_default=False))
+
     agent = Agent(
         user_id=user_id,
         namespace=agent_data.namespace,
@@ -76,6 +80,7 @@ async def create_agent(
         state_namespaces_readwrite=agent_data.state_namespaces_readwrite or [],
         enabled_collections=agent_data.enabled_collections or [],
         is_active=True,
+        is_default=agent_data.is_default or False,
     )
 
     db.add(agent)
@@ -212,6 +217,12 @@ async def update_agent(
         agent.enabled_collections = agent_data.enabled_collections
     if agent_data.is_active is not None:
         agent.is_active = agent_data.is_active
+    if agent_data.is_default is not None:
+        if agent_data.is_default:
+            await db.execute(
+                update(Agent).where(Agent.id != agent.id).values(is_default=False)
+            )
+        agent.is_default = agent_data.is_default
     await db.commit()
     await db.refresh(agent)
 
