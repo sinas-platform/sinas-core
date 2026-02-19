@@ -180,11 +180,10 @@ export interface Agent {
   output_schema: Record<string, any>;
   initial_messages: Array<{role: string; content: string}> | null;
   enabled_functions: string[];
-  enabled_mcp_tools: string[];
+
   enabled_agents: string[];
   enabled_skills: EnabledSkillConfig[];
   function_parameters: FunctionParameters;
-  mcp_tool_parameters: Record<string, any>;
   state_namespaces_readonly: string[] | null;
   state_namespaces_readwrite: string[] | null;
   enabled_collections: string[];
@@ -207,11 +206,9 @@ export interface AgentCreate {
   output_schema?: Record<string, any>;
   initial_messages?: Array<{role: string; content: string}>;
   enabled_functions?: string[];
-  enabled_mcp_tools?: string[];
   enabled_agents?: string[];
   enabled_skills?: EnabledSkillConfig[];
   function_parameters?: FunctionParameters;
-  mcp_tool_parameters?: Record<string, any>;
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
@@ -231,44 +228,14 @@ export interface AgentUpdate {
   output_schema?: Record<string, any>;
   initial_messages?: Array<{role: string; content: string}>;
   enabled_functions?: string[];
-  enabled_mcp_tools?: string[];
   enabled_agents?: string[];
   enabled_skills?: EnabledSkillConfig[];
   function_parameters?: FunctionParameters;
-  mcp_tool_parameters?: Record<string, any>;
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
   is_active?: boolean;
   is_default?: boolean;
-}
-
-// MCP Servers
-export interface MCPServer {
-  id: string;
-  name: string;
-  url: string;
-  protocol: string;
-  is_active: boolean;
-  last_connected: string | null;
-  connection_status: string;
-  error_message: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MCPServerCreate {
-  name: string;
-  url: string;
-  protocol?: string;
-  api_key?: string;
-}
-
-export interface MCPServerUpdate {
-  url?: string;
-  protocol?: string;
-  api_key?: string;
-  is_active?: boolean;
 }
 
 // Roles & Users

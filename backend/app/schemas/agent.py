@@ -30,7 +30,7 @@ class AgentCreate(BaseModel):
     output_schema: Optional[dict[str, Any]] = None
     initial_messages: Optional[list[dict[str, str]]] = None
     enabled_functions: Optional[list[str]] = None  # List of "namespace/name" strings
-    enabled_mcp_tools: Optional[list[str]] = None
+
     enabled_agents: Optional[list[str]] = None  # List of agent names that can be called as tools
     enabled_skills: Optional[
         list[EnabledSkillConfig]
@@ -38,7 +38,7 @@ class AgentCreate(BaseModel):
     function_parameters: Optional[
         dict[str, Any]
     ] = None  # {"namespace/name": {"param": "value or {{template}}"}}
-    mcp_tool_parameters: Optional[dict[str, Any]] = None
+
     state_namespaces_readonly: Optional[list[str]] = None  # Readonly state namespaces
     state_namespaces_readwrite: Optional[list[str]] = None  # Read-write state namespaces
     enabled_collections: Optional[list[str]] = None  # List of "namespace/name" collection references
@@ -62,7 +62,7 @@ class AgentUpdate(BaseModel):
     output_schema: Optional[dict[str, Any]] = None
     initial_messages: Optional[list[dict[str, str]]] = None
     enabled_functions: Optional[list[str]] = None  # List of "namespace/name" strings
-    enabled_mcp_tools: Optional[list[str]] = None
+
     enabled_agents: Optional[list[str]] = None  # List of agent names that can be called as tools
     enabled_skills: Optional[
         list[EnabledSkillConfig]
@@ -70,7 +70,7 @@ class AgentUpdate(BaseModel):
     function_parameters: Optional[
         dict[str, Any]
     ] = None  # {"namespace/name": {"param": "value or {{template}}"}}
-    mcp_tool_parameters: Optional[dict[str, Any]] = None
+
     state_namespaces_readonly: Optional[list[str]] = None
     state_namespaces_readwrite: Optional[list[str]] = None
     enabled_collections: Optional[list[str]] = None  # List of "namespace/name" collection references
@@ -93,11 +93,11 @@ class AgentResponse(BaseModel):
     output_schema: dict[str, Any]
     initial_messages: Optional[list[dict[str, str]]]
     enabled_functions: list[str]  # List of "namespace/name" strings
-    enabled_mcp_tools: list[str]
+
     enabled_agents: list[str]  # List of agent names that can be called as tools
     enabled_skills: list[EnabledSkillConfig]  # List of skill configs with preload option
     function_parameters: dict[str, Any]  # {"namespace/name": {"param": "value or {{template}}"}}
-    mcp_tool_parameters: dict[str, Any]
+
     state_namespaces_readonly: list[str]
     state_namespaces_readwrite: list[str]
     enabled_collections: list[str]

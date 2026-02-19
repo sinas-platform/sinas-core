@@ -47,12 +47,6 @@ export function AgentDetail() {
     retry: false,
   });
 
-  const { data: mcpTools } = useQuery({
-    queryKey: ['mcpTools'],
-    queryFn: () => apiClient.listMCPTools(),
-    retry: false,
-  });
-
   const { data: collections } = useQuery({
     queryKey: ['collections'],
     queryFn: () => apiClient.listCollections(),
@@ -60,7 +54,7 @@ export function AgentDetail() {
   });
 
   const [formData, setFormData] = useState<AgentUpdate>({});
-  const [toolsTab, setToolsTab] = useState<'assistants' | 'skills' | 'functions' | 'mcp' | 'states' | 'collections'>('assistants');
+  const [toolsTab, setToolsTab] = useState<'assistants' | 'skills' | 'functions' | 'states' | 'collections'>('assistants');
   const [expandedFunctionParams, setExpandedFunctionParams] = useState<Set<string>>(new Set());
 
   // Initialize form data when agent loads
@@ -80,11 +74,9 @@ export function AgentDetail() {
         initial_messages: agent.initial_messages || [],
         is_active: agent.is_active,
         enabled_functions: agent.enabled_functions || [],
-        enabled_mcp_tools: agent.enabled_mcp_tools || [],
         enabled_agents: agent.enabled_agents || [],
         enabled_skills: agent.enabled_skills || [],
         function_parameters: agent.function_parameters || {},
-        mcp_tool_parameters: agent.mcp_tool_parameters || {},
         state_namespaces_readonly: agent.state_namespaces_readonly || [],
         state_namespaces_readwrite: agent.state_namespaces_readwrite || [],
         enabled_collections: agent.enabled_collections || [],
@@ -425,17 +417,6 @@ export function AgentDetail() {
               }`}
             >
               Functions
-            </button>
-            <button
-              type="button"
-              onClick={() => setToolsTab('mcp')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                toolsTab === 'mcp'
-                  ? 'text-primary-600 border-b-2 border-primary-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              MCP Tools
             </button>
             <button
               type="button"
@@ -856,58 +837,6 @@ export function AgentDetail() {
                 ) : (
                   <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                     <p className="text-sm text-gray-500">No functions available. Create functions first.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* MCP Tools Tab */}
-            {toolsTab === 'mcp' && (
-              <div>
-                <p className="text-xs text-gray-500 mb-3">
-                  Select MCP tools that this agent can use
-                </p>
-                {mcpTools && mcpTools.length > 0 ? (
-                  <div className="space-y-2 border border-gray-200 rounded-lg p-3 max-h-96 overflow-y-auto">
-                    {mcpTools.map((tool: any) => {
-                      const toolName = tool.name || tool.tool_name;
-                      const isEnabled = (formData.enabled_mcp_tools || agent.enabled_mcp_tools || []).includes(toolName);
-
-                      return (
-                        <label
-                          key={toolName}
-                          className="flex items-start p-2 hover:bg-gray-50 rounded cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isEnabled}
-                            onChange={(e) => {
-                              const current = formData.enabled_mcp_tools || agent.enabled_mcp_tools || [];
-                              const updated = e.target.checked
-                                ? [...current, toolName]
-                                : current.filter((name: string) => name !== toolName);
-                              setFormData({ ...formData, enabled_mcp_tools: updated });
-                            }}
-                            className="mt-1 w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                          />
-                          <div className="ml-3 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900 font-mono">{toolName}</span>
-                              {tool.server_name && (
-                                <span className="text-xs text-gray-500">({tool.server_name})</span>
-                              )}
-                            </div>
-                            {tool.description && (
-                              <p className="text-xs text-gray-500 mt-0.5">{tool.description}</p>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <p className="text-sm text-gray-500">No MCP tools available. Configure and activate MCP servers first.</p>
                   </div>
                 )}
               </div>

@@ -110,18 +110,6 @@ PERMISSION_REGISTRY: list[dict[str, Any]] = [
         "adminOnly": True,
     },
     {
-        "resource": "mcp_servers",
-        "description": "MCP server connections",
-        "actions": ["create", "read", "update", "delete"],
-        "adminOnly": True,
-    },
-    {
-        "resource": "mcp_tools",
-        "description": "MCP tool access",
-        "actions": ["read", "execute"],
-        "adminOnly": True,
-    },
-    {
         "resource": "packages",
         "description": "Python package management",
         "actions": ["install", "read", "delete"],

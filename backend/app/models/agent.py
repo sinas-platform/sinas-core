@@ -61,7 +61,6 @@ class Agent(Base, PermissionMixin):
     enabled_functions: Mapped[list[str]] = mapped_column(
         JSON, default=list
     )  # List of "namespace/name" strings
-    enabled_mcp_tools: Mapped[list[str]] = mapped_column(JSON, default=list)
     enabled_agents: Mapped[list[str]] = mapped_column(JSON, default=list)  # List of agent names
     enabled_skills: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, default=list
@@ -69,8 +68,6 @@ class Agent(Base, PermissionMixin):
     function_parameters: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict
     )  # {"namespace/name": {"param": "value or {{template}}"}}
-    mcp_tool_parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-
     # State access
     state_namespaces_readonly: Mapped[list[str]] = mapped_column(
         JSON, default=list

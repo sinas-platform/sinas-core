@@ -51,9 +51,6 @@ class Message(Base):
     enabled_functions: Mapped[Optional[list[str]]] = mapped_column(
         JSON
     )  # Per-message function overrides
-    enabled_mcp_tools: Mapped[Optional[list[str]]] = mapped_column(
-        JSON
-    )  # Per-message MCP tool overrides
     created_at: Mapped[created_at]
 
     # Relationships

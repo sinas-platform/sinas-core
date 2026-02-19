@@ -94,7 +94,7 @@ def matches_permission_pattern(pattern: str, concrete: str) -> bool:
     concrete_base_segments = concrete_base.split(".")
 
     # Handle trailing wildcard in base (e.g., "sinas.*")
-    # OR when action is wildcard (e.g., "sinas" with action="*" should match "sinas.mcp_servers")
+    # OR when action is wildcard (e.g., "sinas" with action="*" should match "sinas.agents")
     if pattern_base_segments[-1] == "*" or (
         pattern_action == "*" and len(pattern_base_segments) < len(concrete_base_segments)
     ):
@@ -339,13 +339,6 @@ DEFAULT_ROLE_PERMISSIONS = {
         # "sinas.roles.delete:all"
         # "sinas.roles.manage_members:all"
         # "sinas.roles.manage_permissions:all"
-        # MCP Servers (admin-only)
-        # "sinas.mcp_servers.create:all"
-        # "sinas.mcp_servers.read:all"
-        # "sinas.mcp_servers.update:all"
-        # "sinas.mcp_servers.delete:all"
-        # "sinas.mcp_tools.read:all"
-        # "sinas.mcp_tools.execute:all"
         # LLM Providers (admin-only)
         # "sinas.llm_providers.create:all"
         # "sinas.llm_providers.read:all"

@@ -24,7 +24,6 @@ from app.core.permissions import check_permission
 from app.services.content_converter import ContentConverter
 
 from app.services.function_tools import FunctionToolConverter
-from app.services.mcp import mcp_client
 from app.services.queue_service import queue_service
 from app.services.skill_tools import SkillToolConverter
 from app.services.state_tools import StateTools
@@ -153,8 +152,6 @@ class MessageService:
         temperature: float,
         enabled_functions: Optional[list[str]],
         disabled_functions: Optional[list[str]],
-        enabled_mcp_tools: Optional[list[str]],
-        disabled_mcp_tools: Optional[list[str]],
         inject_context: bool,
         state_namespaces: Optional[list[str]],
         context_limit: int,
@@ -291,8 +288,6 @@ class MessageService:
             chat=chat,
             message_enabled_functions=enabled_functions,
             message_disabled_functions=disabled_functions,
-            message_enabled_mcp=enabled_mcp_tools,
-            message_disabled_mcp=disabled_mcp_tools,
         )
 
         # Create LLM provider
@@ -365,8 +360,6 @@ class MessageService:
             temperature=None,
             enabled_functions=None,
             disabled_functions=None,
-            enabled_mcp_tools=None,
-            disabled_mcp_tools=None,
             inject_context=True,
             state_namespaces=None,
             context_limit=5,
@@ -481,8 +474,6 @@ class MessageService:
             temperature=None,
             enabled_functions=None,
             disabled_functions=None,
-            enabled_mcp_tools=None,
-            disabled_mcp_tools=None,
             inject_context=True,
             state_namespaces=None,
             context_limit=5,
@@ -1115,10 +1106,8 @@ class MessageService:
         chat: Chat,
         message_enabled_functions: Optional[list[str]],
         message_disabled_functions: Optional[list[str]],
-        message_enabled_mcp: Optional[list[str]],
-        message_disabled_mcp: Optional[list[str]],
     ) -> list[dict[str, Any]]:
-        """Get all available tools (functions + MCP + context + agents + execution continuation)."""
+        """Get all available tools (functions + context + agents + execution continuation)."""
         tools = []
 
         # No agent = no tools
@@ -1182,18 +1171,6 @@ class MessageService:
                 agent_input_context=agent_input_context,
             )
             tools.extend(function_tools)
-
-        # Determine MCP configuration
-        # Priority: message override > agent config
-        if message_enabled_mcp is not None:
-            mcp_enabled = message_enabled_mcp
-        else:
-            mcp_enabled = agent.enabled_mcp_tools
-
-        # Get MCP tools (only if list has items - opt-in)
-        if mcp_enabled and len(mcp_enabled) > 0:
-            mcp_tools = await mcp_client.get_available_tools(enabled_tools=mcp_enabled)
-            tools.extend(mcp_tools)
 
         # Get skill tools (only if list has items - opt-in)
         if agent.enabled_skills and len(agent.enabled_skills) > 0:
@@ -1485,8 +1462,6 @@ class MessageService:
                     )
                     elapsed = time.time() - start_time
                     logger.debug(f"Collection tool completed in {elapsed:.3f}s: {tool_name}")
-                elif tool_name in mcp_client.tools:
-                    result = await mcp_client.execute_tool(tool_name, arguments)
                 else:
                     # Default: execute as function tool
                     start_time = time.time()

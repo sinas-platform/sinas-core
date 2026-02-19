@@ -10,7 +10,6 @@ import { Chats } from './pages/Chats';
 import { ChatDetail } from './pages/ChatDetail';
 import { Agents } from './pages/Agents';
 import { AgentDetail } from './pages/AgentDetail';
-import { MCPServers } from './pages/MCPServers';
 import { Users } from './pages/Users';
 import { APIKeys } from './pages/APIKeys';
 import { Functions } from './pages/Functions';
@@ -114,7 +113,6 @@ function App() {
               <Route path="webhooks/*" element={<WebhookEditor />} />
               <Route path="schedules" element={<Schedules />} />
               <Route path="schedules/:scheduleId" element={<ScheduleEditor />} />
-              <Route path="mcp" element={<MCPServers />} />
               <Route path="llm-providers" element={<LLMProviders />} />
               <Route path="skills" element={<Skills />} />
               <Route path="collections" element={<Collections />} />

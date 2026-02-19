@@ -18,9 +18,6 @@ import type {
   Agent,
   AgentCreate,
   AgentUpdate,
-  MCPServer,
-  MCPServerCreate,
-  MCPServerUpdate,
   Role,
   RoleCreate,
   UserRole,
@@ -303,36 +300,6 @@ class APIClient {
 
   async deleteAgent(namespace: string, name: string): Promise<void> {
     await this.configClient.delete(`/agents/${namespace}/${name}`);
-  }
-
-  // MCP Servers
-  async listMCPServers(): Promise<MCPServer[]> {
-    const response = await this.configClient.get('/mcp/servers');
-    return response.data;
-  }
-
-  async getMCPServer(serverId: string): Promise<MCPServer> {
-    const response = await this.configClient.get(`/mcp/servers/${serverId}`);
-    return response.data;
-  }
-
-  async createMCPServer(data: MCPServerCreate): Promise<MCPServer> {
-    const response = await this.configClient.post('/mcp/servers', data);
-    return response.data;
-  }
-
-  async updateMCPServer(serverId: string, data: MCPServerUpdate): Promise<MCPServer> {
-    const response = await this.configClient.put(`/mcp/servers/${serverId}`, data);
-    return response.data;
-  }
-
-  async deleteMCPServer(serverId: string): Promise<void> {
-    await this.configClient.delete(`/mcp/servers/${serverId}`);
-  }
-
-  async listMCPTools(): Promise<any[]> {
-    const response = await this.configClient.get('/mcp/tools');
-    return response.data;
   }
 
   // Roles

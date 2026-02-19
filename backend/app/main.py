@@ -14,7 +14,6 @@ from app.core.database import AsyncSessionLocal, get_db
 from app.core.templates import initialize_default_templates
 from app.middleware.request_logger import RequestLoggerMiddleware
 from app.services.clickhouse_logger import clickhouse_logger
-from app.services.mcp import mcp_client
 from app.services.openapi_generator import generate_runtime_openapi
 
 logger = logging.getLogger(__name__)
@@ -42,10 +41,6 @@ async def lifespan(app: FastAPI):
     # Initialize default templates
     async with AsyncSessionLocal() as db:
         await initialize_default_templates(db)
-
-    # Initialize MCP client (each replica needs its own connections)
-    async with AsyncSessionLocal() as db:
-        await mcp_client.initialize(db)
 
     # Discover existing Docker containers so /api/v1/containers and /workers
     # endpoints can report accurate state.  The workers/pool are *created* by

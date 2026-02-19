@@ -105,7 +105,6 @@ class AgentConfig(BaseModel):
     functionParameters: dict[str, Any] = Field(
         default_factory=dict
     )  # {"namespace/name": {"param": "value or {{template}}"}}
-    enabledMcpTools: list[str] = Field(default_factory=list)
     enabledAgents: list[str] = Field(default_factory=list)  # Other agents this agent can call
     enabledSkills: list[Union[str, EnabledSkillConfigYaml]] = Field(
         default_factory=list
@@ -155,17 +154,6 @@ class ScheduleConfig(BaseModel):
         return v
 
 
-class MCPServerConfig(BaseModel):
-    """MCP server configuration"""
-
-    name: str
-    url: str
-    protocol: str  # websocket or http
-    apiKey: Optional[str] = None
-    isActive: bool = True
-    groupName: str
-
-
 class CollectionConfig(BaseModel):
     """Collection configuration"""
 
@@ -187,7 +175,7 @@ class ConfigSpec(BaseModel):
     groups: list[GroupConfig] = Field(default_factory=list)
     users: list[UserConfig] = Field(default_factory=list)
     llmProviders: list[LLMProviderConfig] = Field(default_factory=list)
-    mcpServers: list[MCPServerConfig] = Field(default_factory=list)
+
     skills: list[SkillConfig] = Field(default_factory=list)
     functions: list[FunctionConfig] = Field(default_factory=list)
     collections: list[CollectionConfig] = Field(default_factory=list)

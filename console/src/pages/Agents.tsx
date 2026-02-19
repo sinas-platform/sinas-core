@@ -66,11 +66,9 @@ export function Agents() {
         output_schema: agent.output_schema,
         initial_messages: agent.initial_messages || undefined,
         enabled_functions: agent.enabled_functions,
-        enabled_mcp_tools: agent.enabled_mcp_tools,
         enabled_agents: agent.enabled_agents || undefined,
         enabled_skills: agent.enabled_skills || undefined,
         function_parameters: agent.function_parameters,
-        mcp_tool_parameters: agent.mcp_tool_parameters,
         state_namespaces_readonly: agent.state_namespaces_readonly || undefined,
         state_namespaces_readwrite: agent.state_namespaces_readwrite || undefined,
       };
@@ -176,11 +174,6 @@ export function Agents() {
                 {agent.enabled_functions.length > 0 && (
                   <div className="text-xs text-gray-600">
                     <span className="font-medium">Functions:</span> {agent.enabled_functions.length}
-                  </div>
-                )}
-                {agent.enabled_mcp_tools.length > 0 && (
-                  <div className="text-xs text-gray-600">
-                    <span className="font-medium">MCP Tools:</span> {agent.enabled_mcp_tools.length}
                   </div>
                 )}
               </div>

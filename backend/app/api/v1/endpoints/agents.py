@@ -69,13 +69,11 @@ async def create_agent(
         output_schema=agent_data.output_schema or {},
         initial_messages=agent_data.initial_messages,
         enabled_functions=agent_data.enabled_functions or [],
-        enabled_mcp_tools=agent_data.enabled_mcp_tools or [],
         enabled_agents=agent_data.enabled_agents or [],
         enabled_skills=[skill.model_dump() for skill in agent_data.enabled_skills]
         if agent_data.enabled_skills
         else [],
         function_parameters=agent_data.function_parameters or {},
-        mcp_tool_parameters=agent_data.mcp_tool_parameters or {},
         state_namespaces_readonly=agent_data.state_namespaces_readonly or [],
         state_namespaces_readwrite=agent_data.state_namespaces_readwrite or [],
         enabled_collections=agent_data.enabled_collections or [],
@@ -199,16 +197,12 @@ async def update_agent(
         agent.initial_messages = agent_data.initial_messages
     if agent_data.enabled_functions is not None:
         agent.enabled_functions = agent_data.enabled_functions
-    if agent_data.enabled_mcp_tools is not None:
-        agent.enabled_mcp_tools = agent_data.enabled_mcp_tools
     if agent_data.enabled_agents is not None:
         agent.enabled_agents = agent_data.enabled_agents
     if agent_data.enabled_skills is not None:
         agent.enabled_skills = [skill.model_dump() for skill in agent_data.enabled_skills]
     if agent_data.function_parameters is not None:
         agent.function_parameters = agent_data.function_parameters
-    if agent_data.mcp_tool_parameters is not None:
-        agent.mcp_tool_parameters = agent_data.mcp_tool_parameters
     if agent_data.state_namespaces_readonly is not None:
         agent.state_namespaces_readonly = agent_data.state_namespaces_readonly
     if agent_data.state_namespaces_readwrite is not None:

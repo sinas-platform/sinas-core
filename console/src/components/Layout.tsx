@@ -50,7 +50,6 @@ const navigationSections = [
       { name: 'Collections', href: '/collections', icon: Archive },
       { name: 'States', href: '/states', icon: Database },
       { name: 'LLM Providers', href: '/llm-providers', icon: Brain },
-      { name: 'MCP Servers', href: '/mcp', icon: Server },
       { name: 'Schedules', href: '/schedules', icon: Clock },
     ],
   },
