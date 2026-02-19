@@ -34,10 +34,29 @@ async def execute_agent_message_job(ctx: dict, **kwargs: Any) -> None:
 
     logger.info(f"Agent worker processing message for chat {chat_id} (job={job_id})")
 
+    # Read existing status to preserve fields set at enqueue time (agent, enqueued_at)
+    existing = {}
+    raw = await redis.get(f"{JOB_STATUS_PREFIX}{job_id}")
+    if raw:
+        try:
+            existing = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Common fields preserved across status updates
+    base_fields = {
+        "channel_id": channel_id,
+        "queue": "agents",
+        "type": "message",
+        "chat_id": chat_id,
+        "agent": existing.get("agent"),
+        "enqueued_at": existing.get("enqueued_at"),
+    }
+
     # Update status to running
     await redis.set(
         f"{JOB_STATUS_PREFIX}{job_id}",
-        json.dumps({"status": "running", "channel_id": channel_id}),
+        json.dumps({**base_fields, "status": "running"}),
         ex=JOB_TTL,
     )
 
@@ -63,7 +82,7 @@ async def execute_agent_message_job(ctx: dict, **kwargs: Any) -> None:
         # Update status
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "completed", "channel_id": channel_id}),
+            json.dumps({**base_fields, "status": "completed"}),
             ex=JOB_TTL,
         )
 
@@ -79,7 +98,7 @@ async def execute_agent_message_job(ctx: dict, **kwargs: Any) -> None:
         # Update status
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "failed", "channel_id": channel_id, "error": str(e)}),
+            json.dumps({**base_fields, "status": "failed", "error": str(e)}),
             ex=JOB_TTL,
         )
 
@@ -115,9 +134,28 @@ async def execute_agent_resume_job(ctx: dict, **kwargs: Any) -> None:
 
     logger.info(f"Agent worker resuming chat {chat_id} (job={job_id}, approved={approved})")
 
+    # Read existing status to preserve fields set at enqueue time (agent, enqueued_at)
+    existing = {}
+    raw = await redis.get(f"{JOB_STATUS_PREFIX}{job_id}")
+    if raw:
+        try:
+            existing = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Common fields preserved across status updates
+    base_fields = {
+        "channel_id": channel_id,
+        "queue": "agents",
+        "type": "resume",
+        "chat_id": chat_id,
+        "agent": existing.get("agent"),
+        "enqueued_at": existing.get("enqueued_at"),
+    }
+
     await redis.set(
         f"{JOB_STATUS_PREFIX}{job_id}",
-        json.dumps({"status": "running", "channel_id": channel_id}),
+        json.dumps({**base_fields, "status": "running"}),
         ex=JOB_TTL,
     )
 
@@ -166,7 +204,7 @@ async def execute_agent_resume_job(ctx: dict, **kwargs: Any) -> None:
 
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "completed", "channel_id": channel_id}),
+            json.dumps({**base_fields, "status": "completed"}),
             ex=JOB_TTL,
         )
 
@@ -180,7 +218,7 @@ async def execute_agent_resume_job(ctx: dict, **kwargs: Any) -> None:
 
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "failed", "channel_id": channel_id, "error": str(e)}),
+            json.dumps({**base_fields, "status": "failed", "error": str(e)}),
             ex=JOB_TTL,
         )
 

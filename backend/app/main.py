@@ -47,6 +47,31 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await mcp_client.initialize(db)
 
+    # Discover existing Docker containers so /api/v1/containers and /workers
+    # endpoints can report accurate state.  The workers/pool are *created* by
+    # the arq worker process or explicit scale calls; here we only discover.
+    try:
+        from app.services.container_pool import container_pool
+
+        await container_pool._discover_existing_containers()
+        container_pool._initialized = True
+        print(
+            f"✅ Discovered {len(container_pool.idle)} pool containers"
+        )
+    except Exception as e:
+        print(f"⚠️  Container pool discovery skipped: {e}")
+
+    try:
+        from app.services.shared_worker_manager import shared_worker_manager
+
+        await shared_worker_manager._discover_existing_workers()
+        shared_worker_manager._initialized = True
+        print(
+            f"✅ Discovered {len(shared_worker_manager.workers)} shared workers"
+        )
+    except Exception as e:
+        print(f"⚠️  Shared worker discovery skipped: {e}")
+
     yield
 
     # Shutdown

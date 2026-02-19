@@ -448,6 +448,7 @@ async def approve_tool_call(
         pending_approval_id=str(pending_approval.id),
         approved=request.approved,
         channel_id=channel_id,
+        agent=f"{chat.agent_namespace}/{chat.agent_name}",
     )
 
     return JSONResponse(

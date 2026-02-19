@@ -1,6 +1,9 @@
 """arq worker definitions for function and agent execution."""
+import asyncio
 import json
 import logging
+import time
+import uuid
 from typing import Any
 
 from app.core.config import settings
@@ -14,6 +17,22 @@ from app.services.queue_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+WORKER_HEARTBEAT_PREFIX = "sinas:worker:active:"
+WORKER_HEARTBEAT_TTL = 30  # seconds — key auto-expires if worker dies
+WORKER_HEARTBEAT_INTERVAL = 10  # seconds — refresh frequency
+
+
+async def _heartbeat_loop(redis, worker_id: str, data: dict) -> None:
+    """Background task that refreshes the worker heartbeat key."""
+    key = f"{WORKER_HEARTBEAT_PREFIX}{worker_id}"
+    while True:
+        try:
+            data["last_heartbeat"] = time.time()
+            await redis.set(key, json.dumps(data), ex=WORKER_HEARTBEAT_TTL)
+        except Exception:
+            pass
+        await asyncio.sleep(WORKER_HEARTBEAT_INTERVAL)
 
 
 async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
@@ -34,6 +53,7 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
     trigger_id = kwargs["trigger_id"]
     user_id = kwargs["user_id"]
     chat_id = kwargs.get("chat_id")
+    resume_data = kwargs.get("resume_data")
 
     redis: Redis = ctx.get("redis") or Redis.from_url(settings.redis_url, decode_responses=True)
 
@@ -42,10 +62,28 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
         f"(job={job_id}, execution={execution_id})"
     )
 
+    # Read enqueued_at from initial status to preserve across updates
+    enqueued_at = None
+    raw = await redis.get(f"{JOB_STATUS_PREFIX}{job_id}")
+    if raw:
+        try:
+            enqueued_at = json.loads(raw).get("enqueued_at")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Common fields preserved across status updates
+    fn_label = f"{function_namespace}/{function_name}"
+    base_fields = {
+        "execution_id": execution_id,
+        "queue": "functions",
+        "function": fn_label,
+        "enqueued_at": enqueued_at,
+    }
+
     # Update status to running
     await redis.set(
         f"{JOB_STATUS_PREFIX}{job_id}",
-        json.dumps({"status": "running", "execution_id": execution_id}),
+        json.dumps({**base_fields, "status": "running"}),
         ex=JOB_TTL,
     )
 
@@ -61,6 +99,7 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
             trigger_id=trigger_id,
             user_id=user_id,
             chat_id=chat_id,
+            resume_data=resume_data,
         )
 
         # Store result
@@ -73,7 +112,7 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
         # Update status to completed
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "completed", "execution_id": execution_id}),
+            json.dumps({**base_fields, "status": "completed"}),
             ex=JOB_TTL,
         )
 
@@ -92,11 +131,7 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
         # Update status to failed
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({
-                "status": "failed",
-                "execution_id": execution_id,
-                "error": str(e),
-            }),
+            json.dumps({**base_fields, "status": "failed", "error": str(e)}),
             ex=JOB_TTL,
         )
 
@@ -109,16 +144,23 @@ async def execute_function_job(ctx: dict, **kwargs: Any) -> Any:
         # Check if retries exhausted (arq handles retry count internally)
         job_try = ctx.get("job_try", 1)
         if job_try >= settings.queue_max_retries:
-            # Push to dead letter queue
+            # Push to dead letter queue (include full kwargs for retry)
             await redis.lpush(
                 DLQ_KEY,
                 json.dumps({
                     "job_id": job_id,
                     "function": f"{function_namespace}/{function_name}",
+                    "function_namespace": function_namespace,
+                    "function_name": function_name,
                     "execution_id": execution_id,
+                    "input_data": input_data,
+                    "trigger_type": trigger_type,
+                    "trigger_id": trigger_id,
+                    "user_id": user_id,
+                    "chat_id": chat_id,
                     "error": str(e),
                     "attempts": job_try,
-                }),
+                }, default=str),
             )
             logger.warning(f"Job {job_id} moved to DLQ after {job_try} attempts")
 
@@ -149,7 +191,21 @@ async def function_worker_startup(ctx: dict) -> None:
     container_pool._initialized = True
     print(f"✅ Discovered {len(container_pool.idle)} pool containers")
 
-    logger.info("Function worker started")
+    # Start heartbeat
+    worker_id = str(uuid.uuid4())
+    ctx["worker_id"] = worker_id
+    heartbeat_data = {
+        "worker_id": worker_id,
+        "queue": "functions",
+        "max_jobs": settings.queue_function_concurrency,
+        "started_at": time.time(),
+        "last_heartbeat": time.time(),
+    }
+    ctx["_heartbeat_task"] = asyncio.create_task(
+        _heartbeat_loop(ctx["redis"], worker_id, heartbeat_data)
+    )
+
+    logger.info(f"Function worker started (id={worker_id})")
 
 
 async def agent_worker_startup(ctx: dict) -> None:
@@ -166,14 +222,40 @@ async def agent_worker_startup(ctx: dict) -> None:
     from app.services.message_service import MessageService  # noqa: F401
     from app.core.database import AsyncSessionLocal  # noqa: F401
 
-    logger.info("Agent worker started")
+    # Start heartbeat
+    worker_id = str(uuid.uuid4())
+    ctx["worker_id"] = worker_id
+    heartbeat_data = {
+        "worker_id": worker_id,
+        "queue": "agents",
+        "max_jobs": settings.queue_agent_concurrency,
+        "started_at": time.time(),
+        "last_heartbeat": time.time(),
+    }
+    ctx["_heartbeat_task"] = asyncio.create_task(
+        _heartbeat_loop(ctx["redis"], worker_id, heartbeat_data)
+    )
+
+    logger.info(f"Agent worker started (id={worker_id})")
 
 
 async def shutdown(ctx: dict) -> None:
     """arq worker shutdown hook."""
+    # Cancel heartbeat
+    task = ctx.get("_heartbeat_task")
+    if task:
+        task.cancel()
+
+    # Remove heartbeat key
     redis = ctx.get("redis")
-    if redis:
+    worker_id = ctx.get("worker_id")
+    if redis and worker_id:
+        try:
+            await redis.delete(f"{WORKER_HEARTBEAT_PREFIX}{worker_id}")
+        except Exception:
+            pass
         await redis.aclose()
+
     logger.info("Worker stopped")
 
 

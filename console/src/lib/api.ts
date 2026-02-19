@@ -641,6 +641,44 @@ class APIClient {
     return response.data;
   }
 
+  // Queue
+  async getQueueStats(): Promise<any> {
+    const response = await this.configClient.get('/queue/stats');
+    return response.data;
+  }
+
+  async getQueueJobs(status?: string): Promise<any[]> {
+    const params = status ? { status } : {};
+    const response = await this.configClient.get('/queue/jobs', { params });
+    return response.data;
+  }
+
+  async getQueueDLQ(): Promise<any[]> {
+    const response = await this.configClient.get('/queue/dlq');
+    return response.data;
+  }
+
+  async retryDLQJob(jobId: string): Promise<any> {
+    const response = await this.configClient.post(`/queue/dlq/${jobId}/retry`);
+    return response.data;
+  }
+
+  async getQueueWorkers(): Promise<any[]> {
+    const response = await this.configClient.get('/queue/workers');
+    return response.data;
+  }
+
+  // Container Pool
+  async getContainerStats(): Promise<any> {
+    const response = await this.configClient.get('/containers/stats');
+    return response.data;
+  }
+
+  async scaleContainerPool(target: number): Promise<any> {
+    const response = await this.configClient.post('/containers/scale', { target });
+    return response.data;
+  }
+
   // Skills
   async listSkills(): Promise<Skill[]> {
     const response = await this.configClient.get('/skills');

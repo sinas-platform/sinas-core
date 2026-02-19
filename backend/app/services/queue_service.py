@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Any, Optional
 
@@ -32,6 +33,7 @@ class QueueService:
         user_id: str,
         chat_id: Optional[str] = None,
         delay: Optional[int] = None,
+        resume_data: Optional[dict[str, Any]] = None,
     ) -> str:
         """
         Enqueue a function execution job.
@@ -44,15 +46,23 @@ class QueueService:
 
         job_id = str(uuid.uuid4())
 
+        fn_label = f"{function_namespace}/{function_name}" if function_name else f"resume:{execution_id[:8]}"
+
         # Set initial status in Redis
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "queued", "execution_id": execution_id}),
+            json.dumps({
+                "status": "queued",
+                "execution_id": execution_id,
+                "queue": "functions",
+                "function": fn_label,
+                "enqueued_at": time.time(),
+            }),
             ex=JOB_TTL,
         )
 
         # Build kwargs for arq job
-        job_kwargs = {
+        job_kwargs: dict[str, Any] = {
             "job_id": job_id,
             "function_namespace": function_namespace,
             "function_name": function_name,
@@ -63,6 +73,8 @@ class QueueService:
             "user_id": user_id,
             "chat_id": chat_id,
         }
+        if resume_data is not None:
+            job_kwargs["resume_data"] = resume_data
 
         # Enqueue with optional delay
         enqueue_kwargs = {"_job_id": job_id, "_queue_name": "sinas:queue:functions"}
@@ -107,6 +119,7 @@ class QueueService:
         trigger_id: str,
         user_id: str,
         chat_id: Optional[str] = None,
+        resume_data: Optional[dict[str, Any]] = None,
         timeout: Optional[int] = None,
     ) -> Any:
         """
@@ -126,6 +139,7 @@ class QueueService:
             trigger_id=trigger_id,
             user_id=user_id,
             chat_id=chat_id,
+            resume_data=resume_data,
         )
 
         # Subscribe to completion channel
@@ -166,6 +180,7 @@ class QueueService:
         user_token: str,
         content: str,
         channel_id: str,
+        agent: Optional[str] = None,
     ) -> str:
         """Enqueue an agent message processing job."""
         pool = await get_arq_pool()
@@ -173,9 +188,20 @@ class QueueService:
 
         job_id = str(uuid.uuid4())
 
+        status_data: dict[str, Any] = {
+            "status": "queued",
+            "channel_id": channel_id,
+            "queue": "agents",
+            "type": "message",
+            "chat_id": chat_id,
+            "enqueued_at": time.time(),
+        }
+        if agent:
+            status_data["agent"] = agent
+
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "queued", "channel_id": channel_id}),
+            json.dumps(status_data),
             ex=JOB_TTL,
         )
 
@@ -202,6 +228,7 @@ class QueueService:
         pending_approval_id: str,
         approved: bool,
         channel_id: str,
+        agent: Optional[str] = None,
     ) -> str:
         """Enqueue an agent resume job (after tool approval)."""
         pool = await get_arq_pool()
@@ -209,9 +236,20 @@ class QueueService:
 
         job_id = str(uuid.uuid4())
 
+        status_data: dict[str, Any] = {
+            "status": "queued",
+            "channel_id": channel_id,
+            "queue": "agents",
+            "type": "resume",
+            "chat_id": chat_id,
+            "enqueued_at": time.time(),
+        }
+        if agent:
+            status_data["agent"] = agent
+
         await redis.set(
             f"{JOB_STATUS_PREFIX}{job_id}",
-            json.dumps({"status": "queued", "channel_id": channel_id}),
+            json.dumps(status_data),
             ex=JOB_TTL,
         )
 
@@ -230,6 +268,190 @@ class QueueService:
 
         logger.info(f"Enqueued agent resume job {job_id} for chat {chat_id}")
         return job_id
+
+
+    async def get_queue_stats(self) -> dict[str, Any]:
+        """Get aggregate queue statistics."""
+        redis = await get_redis()
+
+        # Queue depths (arq uses sorted sets)
+        functions_pending = await redis.zcard("sinas:queue:functions")
+        agents_pending = await redis.zcard("sinas:queue:agents")
+
+        # DLQ size
+        dlq_size = await redis.llen(DLQ_KEY)
+
+        # Job status counts via SCAN
+        status_counts: dict[str, int] = {}
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(
+                cursor, match=f"{JOB_STATUS_PREFIX}*", count=200
+            )
+            if keys:
+                values = await redis.mget(*keys)
+                for val in values:
+                    if val:
+                        try:
+                            status = json.loads(val).get("status", "unknown")
+                            status_counts[status] = status_counts.get(status, 0) + 1
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+            if cursor == 0:
+                break
+
+        return {
+            "queues": {
+                "functions": {"pending": functions_pending},
+                "agents": {"pending": agents_pending},
+            },
+            "jobs": {
+                "queued": status_counts.get("queued", 0),
+                "running": status_counts.get("running", 0),
+                "completed": status_counts.get("completed", 0),
+                "failed": status_counts.get("failed", 0),
+            },
+            "dlq": {"size": dlq_size},
+        }
+
+    async def get_jobs_list(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """List jobs, optionally filtered by status. Sorted newest first."""
+        redis = await get_redis()
+        jobs: list[dict[str, Any]] = []
+
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(
+                cursor, match=f"{JOB_STATUS_PREFIX}*", count=200
+            )
+            if keys:
+                values = await redis.mget(*keys)
+                for key, val in zip(keys, values):
+                    if val:
+                        try:
+                            data = json.loads(val)
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+                        if status and data.get("status") != status:
+                            continue
+                        job_id = key.removeprefix(JOB_STATUS_PREFIX)
+                        jobs.append({
+                            "job_id": job_id,
+                            "status": data.get("status"),
+                            "queue": data.get("queue"),
+                            "function": data.get("function"),
+                            "agent": data.get("agent"),
+                            "type": data.get("type"),
+                            "chat_id": data.get("chat_id"),
+                            "execution_id": data.get("execution_id"),
+                            "channel_id": data.get("channel_id"),
+                            "error": data.get("error"),
+                            "enqueued_at": data.get("enqueued_at"),
+                        })
+            if cursor == 0:
+                break
+
+        # Sort newest first; jobs without timestamp sort last
+        jobs.sort(key=lambda j: j.get("enqueued_at") or 0, reverse=True)
+        return jobs[:limit]
+
+    async def get_dlq_entries(self) -> list[dict[str, Any]]:
+        """Get all dead-letter queue entries."""
+        redis = await get_redis()
+        raw_entries = await redis.lrange(DLQ_KEY, 0, -1)
+        entries: list[dict[str, Any]] = []
+        for raw in raw_entries:
+            try:
+                entry = json.loads(raw)
+                entries.append({
+                    "job_id": entry.get("job_id"),
+                    "function": entry.get("function"),
+                    "execution_id": entry.get("execution_id"),
+                    "error": entry.get("error"),
+                    "attempts": entry.get("attempts"),
+                })
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return entries
+
+    async def retry_dlq_job(self, job_id: str) -> dict[str, Any]:
+        """Remove a job from the DLQ and re-enqueue it."""
+        redis = await get_redis()
+        raw_entries = await redis.lrange(DLQ_KEY, 0, -1)
+
+        target_entry = None
+        target_raw = None
+        for raw in raw_entries:
+            try:
+                entry = json.loads(raw)
+                if entry.get("job_id") == job_id:
+                    target_entry = entry
+                    target_raw = raw
+                    break
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if not target_entry:
+            raise ValueError(f"Job {job_id} not found in DLQ")
+
+        # Verify we have the parameters needed for re-enqueue
+        required = ["function_namespace", "function_name", "input_data",
+                     "execution_id", "trigger_type", "trigger_id", "user_id"]
+        missing = [k for k in required if k not in target_entry]
+        if missing:
+            raise ValueError(
+                f"DLQ entry missing fields for retry: {missing}. "
+                "Job was enqueued before retry support was added."
+            )
+
+        # Remove from DLQ
+        await redis.lrem(DLQ_KEY, 1, target_raw)
+
+        # Re-enqueue with a new job ID
+        new_job_id = await self.enqueue_function(
+            function_namespace=target_entry["function_namespace"],
+            function_name=target_entry["function_name"],
+            input_data=target_entry["input_data"],
+            execution_id=target_entry["execution_id"],
+            trigger_type=target_entry["trigger_type"],
+            trigger_id=target_entry["trigger_id"],
+            user_id=target_entry["user_id"],
+            chat_id=target_entry.get("chat_id"),
+        )
+
+        logger.info(f"Retried DLQ job {job_id} as new job {new_job_id}")
+        return {"old_job_id": job_id, "new_job_id": new_job_id}
+
+    async def get_active_workers(self) -> list[dict[str, Any]]:
+        """List active arq worker processes from heartbeat keys."""
+        from app.queue.worker import WORKER_HEARTBEAT_PREFIX
+
+        redis = await get_redis()
+        workers: list[dict[str, Any]] = []
+
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(
+                cursor, match=f"{WORKER_HEARTBEAT_PREFIX}*", count=100
+            )
+            if keys:
+                values = await redis.mget(*keys)
+                for val in values:
+                    if val:
+                        try:
+                            workers.append(json.loads(val))
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+            if cursor == 0:
+                break
+
+        # Sort by queue then start time
+        workers.sort(key=lambda w: (w.get("queue", ""), w.get("started_at", 0)))
+        return workers
 
 
 # Global instance

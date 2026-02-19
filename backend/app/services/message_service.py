@@ -21,7 +21,7 @@ from app.models.pending_approval import PendingToolApproval
 from app.providers import create_provider
 from app.services.collection_tools import CollectionToolConverter
 from app.services.content_converter import ContentConverter
-from app.services.execution_engine import executor
+
 from app.services.function_tools import FunctionToolConverter
 from app.services.mcp import mcp_client
 from app.services.queue_service import queue_service
@@ -1000,18 +1000,27 @@ class MessageService:
                 },
             }
 
+            # Hidden parameters included in all agent tools
+            _hidden = {
+                "_agent_id": {
+                    "type": "string",
+                    "description": "Internal agent identifier",
+                    "const": str(agent.id),
+                    "default": str(agent.id),
+                },
+                "_chat_id": {
+                    "type": "string",
+                    "description": "Optional chat ID to resume a previous conversation with this agent instead of starting a new one. Use a chat_id returned from a previous call to continue that conversation.",
+                },
+            }
+
             # Build parameters - always include agent_id as a hidden constant
             if agent.input_schema and agent.input_schema.get("properties"):
-                # Merge input_schema with agent_id
+                # Merge input_schema with hidden params
                 params = dict(agent.input_schema)
                 if "properties" not in params:
                     params["properties"] = {}
-                params["properties"]["_agent_id"] = {
-                    "type": "string",
-                    "description": "Internal agent identifier",
-                    "const": str(agent.id),  # Force this specific value
-                    "default": str(agent.id),  # Provide default for LLMs that don't respect const
-                }
+                params["properties"].update(_hidden)
                 # Make _agent_id required
                 if "required" not in params:
                     params["required"] = []
@@ -1019,7 +1028,7 @@ class MessageService:
                     params["required"].append("_agent_id")
                 tool_def["function"]["parameters"] = params
             else:
-                # Default: simple prompt + hidden agent_id
+                # Default: simple prompt + hidden params
                 tool_def["function"]["parameters"] = {
                     "type": "object",
                     "properties": {
@@ -1027,12 +1036,7 @@ class MessageService:
                             "type": "string",
                             "description": "The prompt or query to send to the agent",
                         },
-                        "_agent_id": {
-                            "type": "string",
-                            "description": "Internal agent identifier",
-                            "const": str(agent.id),
-                            "default": str(agent.id),  # Provide default for LLMs that don't respect const
-                        },
+                        **_hidden,
                     },
                     "required": ["prompt", "_agent_id"],
                 }
@@ -1186,7 +1190,7 @@ class MessageService:
         arguments: dict[str, Any],
         enabled_agent_ids: list[str],
     ) -> dict[str, Any]:
-        """Execute an agent tool call by creating a new chat and getting a response."""
+        """Execute an agent tool call by creating or resuming a chat."""
         # Extract agent ID from arguments (passed as _agent_id parameter)
         agent_id_str = arguments.get("_agent_id")
         if not agent_id_str:
@@ -1204,7 +1208,7 @@ class MessageService:
             return {"error": f"Agent not found: {agent_id_str}"}
 
         # Prepare input data for the agent
-        # Filter out internal _agent_id parameter
+        # Filter out internal _* parameters
         user_arguments = {k: v for k, v in arguments.items() if not k.startswith("_")}
 
         # If arguments contain just "prompt", send as message content
@@ -1218,14 +1222,29 @@ class MessageService:
             input_data = user_arguments
             content = json.dumps(user_arguments)
 
-        # Create a new chat for this agent call
+        # Resume existing chat or create a new one
+        resume_chat_id = arguments.get("_chat_id")
         try:
-            sub_chat = await self.create_chat_with_agent(
-                agent_id=str(agent.id),
-                user_id=user_id,
-                input_data=input_data,
-                name=f"Sub-chat: {agent.name}",
-            )
+            if resume_chat_id:
+                # Verify the chat exists, belongs to this user and agent
+                result = await self.db.execute(
+                    select(Chat).where(
+                        Chat.id == resume_chat_id,
+                        Chat.user_id == user_id,
+                        Chat.agent_id == agent_id_str,
+                    )
+                )
+                sub_chat = result.scalar_one_or_none()
+                if not sub_chat:
+                    return {"error": f"Chat {resume_chat_id} not found or does not belong to this agent"}
+                logger.info(f"Resuming sub-agent chat {sub_chat.id} with {agent.namespace}/{agent.name}")
+            else:
+                sub_chat = await self.create_chat_with_agent(
+                    agent_id=str(agent.id),
+                    user_id=user_id,
+                    input_data=input_data,
+                    name=f"Sub-chat: {agent.name}",
+                )
 
             # Route agent-to-agent calls through the queue so each sub-agent
             # runs in its own worker — enables agent swarms without recursive blocking.
@@ -1237,6 +1256,7 @@ class MessageService:
                 user_token=user_token,
                 content=content,
                 channel_id=channel_id,
+                agent=f"{agent.namespace}/{agent.name}",
             )
 
             # Wait for the sub-agent to finish by reading the Redis stream
@@ -1322,12 +1342,33 @@ class MessageService:
                         agent_id=str(chat.agent_id) if chat and chat.agent_id else None,
                     )
                 elif tool_name == "continue_execution":
-                    result = await executor.execute_function(
-                        function_name="",
+                    # Look up function namespace from execution record
+                    from app.models.execution import Execution as ExecModel
+                    from app.models.function import Function as FuncModel
+
+                    exec_res = await db.execute(
+                        select(ExecModel).where(ExecModel.execution_id == arguments["execution_id"])
+                    )
+                    exec_record = exec_res.scalar_one_or_none()
+                    fn_ns, fn_name = "", ""
+                    if exec_record:
+                        fn_res = await db.execute(
+                            select(FuncModel).where(
+                                FuncModel.name == exec_record.function_name,
+                                FuncModel.is_active == True,
+                            )
+                        )
+                        fn = fn_res.scalar_one_or_none()
+                        if fn:
+                            fn_ns, fn_name = fn.namespace, fn.name
+
+                    result = await queue_service.enqueue_and_wait(
+                        function_namespace=fn_ns,
+                        function_name=fn_name,
                         input_data=arguments["input"],
                         execution_id=arguments["execution_id"],
-                        trigger_type="",
-                        trigger_id="",
+                        trigger_type=exec_record.trigger_type if exec_record else "",
+                        trigger_id=str(exec_record.trigger_id) if exec_record else "",
                         user_id=user_id,
                         resume_data=arguments["input"],
                     )
