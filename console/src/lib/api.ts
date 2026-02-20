@@ -525,12 +525,12 @@ class APIClient {
 
   // Executions
   async listExecutions(): Promise<any[]> {
-    const response = await this.configClient.get('/executions');
+    const response = await this.runtimeClient.get('/executions');
     return response.data;
   }
 
   async getExecution(executionId: string): Promise<any> {
-    const response = await this.configClient.get(`/executions/${executionId}`);
+    const response = await this.runtimeClient.get(`/executions/${executionId}`);
     return response.data;
   }
 
