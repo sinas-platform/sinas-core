@@ -449,7 +449,7 @@ class ClickHouseLogger:
                         f"ALTER TABLE {table} MODIFY SETTING storage_policy = 'tiered'"
                     )
                     self.client.command(
-                        f"ALTER TABLE {table} MODIFY TTL timestamp + INTERVAL {hot_days} DAY TO VOLUME 'cold'"
+                        f"ALTER TABLE {table} MODIFY TTL toDateTime(timestamp) + INTERVAL {hot_days} DAY TO VOLUME 'cold'"
                     )
                     self.client.command(f"ALTER TABLE {table} MATERIALIZE TTL")
                     print(f"  {table}: tiered TTL applied")
@@ -460,7 +460,7 @@ class ClickHouseLogger:
                 )
                 for table in tables:
                     self.client.command(
-                        f"ALTER TABLE {table} MODIFY TTL timestamp + INTERVAL {retention_days} DAY DELETE"
+                        f"ALTER TABLE {table} MODIFY TTL toDateTime(timestamp) + INTERVAL {retention_days} DAY DELETE"
                     )
                     self.client.command(f"ALTER TABLE {table} MATERIALIZE TTL")
                     print(f"  {table}: delete TTL applied")
