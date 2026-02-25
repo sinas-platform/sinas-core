@@ -16,6 +16,7 @@ from app.schemas import (
     StepExecutionResponse,
 )
 
+from app.services.queue_service import queue_service
 
 router = APIRouter(prefix="/executions")
 
@@ -80,7 +81,6 @@ async def get_execution(
 
     # No DB record yet — check Redis for queued/in-progress job status.
     # Since job_id = execution_id, we can look up directly.
-    from app.services.queue_service import queue_service
 
     status = await queue_service.get_job_status(execution_id)
     if status:

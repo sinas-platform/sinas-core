@@ -347,6 +347,7 @@ The runtime API is mounted at the root. It handles authentication, chat, executi
 /agents/...            # Create chats with agents
 /chats/...             # Send messages, manage chats
 /functions/...         # Execute functions (sync and async)
+/queries/...           # Execute database queries
 /webhooks/...          # Trigger webhook-linked functions
 /executions/...        # View execution history and results
 /jobs/...              # Check job status
@@ -775,12 +776,13 @@ Locked parameters prevent the LLM from seeing or modifying security-sensitive va
 **Endpoints:**
 
 ```
+POST   /queries/{namespace}/{name}/execute            # Execute with parameters (runtime)
+
 POST   /api/v1/queries                              # Create query
 GET    /api/v1/queries                              # List queries
 GET    /api/v1/queries/{namespace}/{name}           # Get query
 PUT    /api/v1/queries/{namespace}/{name}           # Update query
 DELETE /api/v1/queries/{namespace}/{name}           # Delete query
-POST   /api/v1/queries/{namespace}/{name}/execute   # Execute with parameters
 ```
 
 ---

@@ -177,8 +177,8 @@ export function AgentDetail() {
   -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '${agent.input_schema && Object.keys(agent.input_schema.properties || {}).length > 0
-    ? `{"input": {${Object.keys(agent.input_schema.properties || {}).map(k => `"${k}": "..."`).join(', ')}}}`
-    : '{}'}'`,
+    ? `{"title": "My chat", "input": {${Object.keys(agent.input_schema.properties || {}).map(k => `"${k}": "..."`).join(', ')}}}`
+    : '{"title": "My chat"}'}'`,
             },
             {
               label: 'Send a message (streaming)',
@@ -197,7 +197,8 @@ export function AgentDetail() {
 
 client = SinasClient(base_url="${API_BASE_URL}", api_key="sk-...")
 
-chat = client.chats.create("${agent.namespace}", "${agent.name}"${
+chat = client.chats.create("${agent.namespace}", "${agent.name}",
+    title="My chat"${
   agent.input_schema && Object.keys(agent.input_schema.properties || {}).length > 0
     ? `,\n    input={${Object.keys(agent.input_schema.properties || {}).map(k => `"${k}": "..."`).join(', ')}}`
     : ''})

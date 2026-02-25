@@ -307,8 +307,8 @@ export function FunctionEditor() {
   -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '${Object.keys((formData.input_schema as any)?.properties || {}).length > 0
-    ? `{${Object.keys((formData.input_schema as any).properties).map(k => `"${k}": "..."`).join(', ')}}`
-    : '{}'}'`,
+    ? `{"input": {${Object.keys((formData.input_schema as any).properties).map(k => `"${k}": "..."`).join(', ')}}}`
+    : '{"input": {}}'}'`,
             },
             {
               label: 'Check execution result',

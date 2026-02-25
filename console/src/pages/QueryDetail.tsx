@@ -143,12 +143,12 @@ export function QueryDetail() {
             {
               label: 'Execute query',
               language: 'bash',
-              code: `curl -X POST ${API_BASE_URL}/api/v1/queries/${namespace}/${name}/execute \\
+              code: `curl -X POST ${API_BASE_URL}/queries/${namespace}/${name}/execute \\
   -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '${Object.keys((inputSchema as any)?.properties || {}).length > 0
-    ? `{${Object.keys((inputSchema as any).properties).map(k => `"${k}": "..."`).join(', ')}}`
-    : '{}'}'`,
+    ? `{"input": {${Object.keys((inputSchema as any).properties).map(k => `"${k}": "..."`).join(', ')}}}`
+    : '{"input": {}}'}'`,
             },
           ]}
           sdk={[
@@ -162,8 +162,8 @@ client = SinasClient(base_url="${API_BASE_URL}", api_key="sk-...")
 # Direct HTTP until SDK queries module is released
 result = client._request(
     "POST",
-    "/api/v1/queries/${namespace}/${name}/execute",
-    json={${Object.keys((inputSchema as any)?.properties || {}).map(k => `"${k}": "..."`).join(', ')}}
+    "/queries/${namespace}/${name}/execute",
+    json={"input": {${Object.keys((inputSchema as any)?.properties || {}).map(k => `"${k}": "..."`).join(', ')}}}
 )
 print(result)`,
             },
