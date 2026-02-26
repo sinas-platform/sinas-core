@@ -374,10 +374,28 @@ export function ChatDetail() {
         const base64 = await fileToBase64(attachment.file);
 
         if (attachment.type === 'image') {
-          contentParts.push({
-            type: 'image',
-            image: base64,
-          });
+          // Upload image to collection storage and use signed URL
+          try {
+            const uniqueFilename = `${chatId}-${Date.now()}-${attachment.file.name}`;
+            const content_base64 = base64.split(',')[1]; // Remove data URL prefix
+            await apiClient.uploadFile('default', 'chat-uploads', {
+              name: uniqueFilename,
+              content_base64,
+              content_type: attachment.file.type,
+              visibility: 'private',
+            });
+            const urlResult = await apiClient.generateFileUrl('default', 'chat-uploads', uniqueFilename, undefined, 2592000);
+            contentParts.push({
+              type: 'image',
+              image: urlResult.url,
+            });
+          } catch (err) {
+            console.error('Failed to upload image, falling back to base64:', err);
+            contentParts.push({
+              type: 'image',
+              image: base64,
+            });
+          }
         } else if (attachment.type === 'audio') {
           const format = attachment.file.name.split('.').pop() as 'wav' | 'mp3' | 'm4a' | 'ogg';
           contentParts.push({
