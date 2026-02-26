@@ -176,6 +176,83 @@ class ContentConverter:
         return result
 
     @staticmethod
+    def to_anthropic(content: Union[str, list[dict[str, Any]]]) -> Union[str, list[dict[str, Any]]]:
+        """
+        Convert universal content format to Anthropic format.
+
+        Conversions:
+        - text: passthrough
+        - image: {type: "image", source: {type: "url", url: ...}} or base64 variant
+        - audio: NOT supported (skipped with warning)
+        - file: {type: "document", source: {type: "base64", ...}} for PDF, skipped otherwise
+        """
+        if isinstance(content, str):
+            return content
+
+        result = []
+        for chunk in content:
+            chunk_type = chunk.get("type")
+
+            if chunk_type == "text":
+                result.append({"type": "text", "text": chunk["text"]})
+
+            elif chunk_type == "image":
+                image_value = chunk["image"]
+                if image_value.startswith("data:"):
+                    # Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
+                    header, data = image_value.split(",", 1)
+                    # Extract media type from "data:image/jpeg;base64"
+                    media_type = header.split(":")[1].split(";")[0]
+                    result.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": data,
+                        },
+                    })
+                else:
+                    # URL-based image
+                    result.append({
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": image_value,
+                        },
+                    })
+
+            elif chunk_type == "audio":
+                logger.warning("Anthropic doesn't support audio input. Skipping audio chunk.")
+                continue
+
+            elif chunk_type == "file":
+                # Anthropic supports PDF documents via base64
+                if "file_data" in chunk:
+                    mime = chunk.get("mime_type", "application/pdf")
+                    if mime == "application/pdf":
+                        result.append({
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime,
+                                "data": chunk["file_data"],
+                            },
+                        })
+                    else:
+                        logger.warning(
+                            f"Anthropic only supports PDF documents, got {mime}. Skipping."
+                        )
+                        continue
+                else:
+                    logger.warning("Anthropic requires base64 file data. Skipping file chunk.")
+                    continue
+
+            else:
+                result.append(chunk)
+
+        return result
+
+    @staticmethod
     def convert_message_content(
         content: Union[str, list[dict[str, Any]]], provider_type: str
     ) -> Union[str, list[dict[str, Any]]]:
@@ -193,6 +270,8 @@ class ContentConverter:
 
         if provider_type == "openai":
             return ContentConverter.to_openai(content)
+        elif provider_type == "anthropic":
+            return ContentConverter.to_anthropic(content)
         elif provider_type == "mistral":
             return ContentConverter.to_mistral(content)
         elif provider_type == "ollama":
