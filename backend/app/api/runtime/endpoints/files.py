@@ -523,7 +523,7 @@ async def generate_temp_url(
     set_permission_used(http_request, perm)
 
     # Clamp expires_in to reasonable bounds
-    expires_in = max(60, min(expires_in, 86400))  # 1 min to 24 hours
+    expires_in = max(60, min(expires_in, 2592000))  # 1 min to 30 days
 
     # Get collection
     coll = await Collection.get_by_name(db, namespace, collection)
