@@ -14,20 +14,20 @@ class ConfigMetadata(BaseModel):
     labels: Optional[dict[str, str]] = Field(default_factory=dict)
 
 
-class GroupPermissionConfig(BaseModel):
-    """Group permission configuration"""
+class RolePermissionConfig(BaseModel):
+    """Role permission configuration"""
 
     key: str
     value: bool
 
 
-class GroupConfig(BaseModel):
-    """Group configuration"""
+class RoleConfig(BaseModel):
+    """Role configuration"""
 
     name: str
     description: Optional[str] = None
     emailDomain: Optional[str] = None
-    permissions: list[GroupPermissionConfig] = Field(default_factory=list)
+    permissions: list[RolePermissionConfig] = Field(default_factory=list)
 
 
 class UserPermissionConfig(BaseModel):
@@ -42,7 +42,7 @@ class UserConfig(BaseModel):
 
     email: str
     isActive: bool = True
-    groups: list[str] = Field(default_factory=list)
+    roles: list[str] = Field(default_factory=list)
     permissions: list[UserPermissionConfig] = Field(default_factory=list)
 
 
@@ -80,7 +80,6 @@ class QueryConfig(BaseModel):
     connectionName: str  # Ref to DatabaseConnection by name
     operation: str  # "read" or "write"
     sql: str
-    groupName: str
     inputSchema: Optional[dict[str, Any]] = None
     outputSchema: Optional[dict[str, Any]] = None
     timeoutMs: int = 5000
@@ -92,7 +91,6 @@ class FunctionConfig(BaseModel):
 
     name: str
     description: Optional[str] = None
-    groupName: str
     code: str
     inputSchema: Optional[dict[str, Any]] = None
     outputSchema: Optional[dict[str, Any]] = None
@@ -125,7 +123,6 @@ class AgentConfig(BaseModel):
     namespace: str = "default"
     name: str
     description: Optional[str] = None
-    groupName: str
     llmProviderName: Optional[str] = None  # NULL = use default provider
     model: Optional[str] = None  # NULL = use provider's default model
     temperature: float = 0.7
@@ -157,7 +154,6 @@ class WebhookConfig(BaseModel):
     httpMethod: str = "POST"
     description: Optional[str] = None
     requiresAuth: bool = True
-    groupName: str
     defaultValues: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -172,7 +168,6 @@ class ScheduleConfig(BaseModel):
     description: Optional[str] = None
     cronExpression: str
     timezone: str = "UTC"
-    groupName: str
     inputData: dict[str, Any] = Field(default_factory=dict)
     isActive: bool = True
 
@@ -213,7 +208,6 @@ class CollectionConfig(BaseModel):
 
     namespace: str = "default"
     name: str
-    groupName: str
     metadataSchema: Optional[dict[str, Any]] = None
     contentFilterFunction: Optional[str] = None  # "namespace/name" format
     postUploadFunction: Optional[str] = None  # "namespace/name" format
@@ -226,7 +220,7 @@ class CollectionConfig(BaseModel):
 class ConfigSpec(BaseModel):
     """Configuration specification"""
 
-    groups: list[GroupConfig] = Field(default_factory=list)
+    roles: list[RoleConfig] = Field(default_factory=list)
     users: list[UserConfig] = Field(default_factory=list)
     llmProviders: list[LLMProviderConfig] = Field(default_factory=list)
     databaseConnections: list[DatabaseConnectionConfig] = Field(default_factory=list)

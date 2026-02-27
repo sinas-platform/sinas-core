@@ -85,8 +85,8 @@ class ConfigParser:
             config.spec.model_dump() if hasattr(config.spec, "model_dump") else config.spec.dict()
         )
 
-        # Collect all group names from config
-        group_names = {g["name"] for g in spec.get("groups", [])}
+        # Collect all role names from config
+        role_names = {r["name"] for r in spec.get("roles", [])}
         # Functions and agents use namespace/name format
         function_names = {
             f"{f.get('namespace', 'default')}/{f['name']}" for f in spec.get("functions", [])
@@ -106,7 +106,7 @@ class ConfigParser:
             f"{q.get('namespace', 'default')}/{q['name']}" for q in spec.get("queries", [])
         }
         # Database names (if db provided)
-        db_group_names: set[str] = set()
+        db_role_names: set[str] = set()
         db_function_names: set[str] = set()
         db_agent_names: set[str] = set()
         db_skill_names: set[str] = set()
@@ -124,7 +124,7 @@ class ConfigParser:
 
             # Load existing resource names from database
             result = await db.execute(select(Role.name))
-            db_group_names = {name for (name,) in result.fetchall()}
+            db_role_names = {name for (name,) in result.fetchall()}
 
             # Functions, agents, skills, and collections use namespace/name format
             result = await db.execute(select(Function.namespace, Function.name))
@@ -152,7 +152,7 @@ class ConfigParser:
             db_query_names = {f"{namespace}/{name}" for (namespace, name) in result.fetchall()}
 
         # Combined sets (config + database)
-        all_group_names = group_names | db_group_names
+        all_role_names = role_names | db_role_names
         all_function_names = function_names | db_function_names
         all_agent_names = agent_names | db_agent_names
         all_skill_names = skill_names | db_skill_names
@@ -193,26 +193,8 @@ class ConfigParser:
                         )
                     )
 
-        # Validate function references
-        for i, func in enumerate(spec.get("functions", [])):
-            if func["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.functions[{i}].groupName",
-                        message=f"Referenced group '{func['groupName']}' not defined",
-                    )
-                )
-
         # Validate agent references
         for i, agent in enumerate(spec.get("agents", [])):
-            if agent["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.agents[{i}].groupName",
-                        message=f"Referenced group '{agent['groupName']}' not defined",
-                    )
-                )
-
             # Validate LLM provider reference
             if "llmProviderName" in agent and agent["llmProviderName"]:
                 if agent["llmProviderName"] not in all_llm_provider_names:
@@ -282,13 +264,6 @@ class ConfigParser:
 
         # Validate query references
         for i, query in enumerate(spec.get("queries", [])):
-            if query["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.queries[{i}].groupName",
-                        message=f"Referenced group '{query['groupName']}' not defined",
-                    )
-                )
             if query["connectionName"] not in all_database_connection_names:
                 errors.append(
                     ConfigValidationError(
@@ -299,13 +274,6 @@ class ConfigParser:
 
         # Validate collection references
         for i, coll in enumerate(spec.get("collections", [])):
-            if coll["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.collections[{i}].groupName",
-                        message=f"Referenced group '{coll['groupName']}' not defined",
-                    )
-                )
             # Validate content filter function reference
             if coll.get("contentFilterFunction"):
                 if coll["contentFilterFunction"] not in all_function_names:
@@ -327,13 +295,6 @@ class ConfigParser:
 
         # Validate webhook references
         for i, webhook in enumerate(spec.get("webhooks", [])):
-            if webhook["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.webhooks[{i}].groupName",
-                        message=f"Referenced group '{webhook['groupName']}' not defined",
-                    )
-                )
             # Build function reference as namespace/name
             func_namespace = webhook.get("functionNamespace", "default")
             func_name = webhook["functionName"]
@@ -348,13 +309,6 @@ class ConfigParser:
 
         # Validate schedule references
         for i, schedule in enumerate(spec.get("schedules", [])):
-            if schedule["groupName"] not in all_group_names:
-                errors.append(
-                    ConfigValidationError(
-                        path=f"spec.schedules[{i}].groupName",
-                        message=f"Referenced group '{schedule['groupName']}' not defined",
-                    )
-                )
             # Build function reference as namespace/name
             func_namespace = schedule.get("functionNamespace", "default")
             func_name = schedule["functionName"]

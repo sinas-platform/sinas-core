@@ -49,7 +49,7 @@ class ConfigExportService:
         }
 
         # Export all resource types
-        config_dict["spec"]["groups"] = await self._export_groups()
+        config_dict["spec"]["roles"] = await self._export_roles()
         config_dict["spec"]["users"] = await self._export_users()
         config_dict["spec"]["llmProviders"] = await self._export_llm_providers()
 
@@ -62,34 +62,34 @@ class ConfigExportService:
         # Convert to YAML
         return yaml.dump(config_dict, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-    async def _export_groups(self) -> list[dict]:
-        """Export groups"""
+    async def _export_roles(self) -> list[dict]:
+        """Export roles"""
         stmt = select(Role)
         if self.managed_only:
             stmt = stmt.where(Role.managed_by == "config")
 
         result = await self.db.execute(stmt)
-        groups = result.scalars().all()
+        roles = result.scalars().all()
 
         exported = []
-        for group in groups:
-            group_dict = {
-                "name": group.name,
-                "description": group.description,
+        for role in roles:
+            role_dict = {
+                "name": role.name,
+                "description": role.description,
             }
-            if group.email_domain:
-                group_dict["emailDomain"] = group.email_domain
+            if role.email_domain:
+                role_dict["emailDomain"] = role.email_domain
 
             # Export permissions
-            perm_stmt = select(RolePermission).where(RolePermission.group_id == group.id)
+            perm_stmt = select(RolePermission).where(RolePermission.role_id == role.id)
             perm_result = await self.db.execute(perm_stmt)
             permissions = perm_result.scalars().all()
             if permissions:
-                group_dict["permissions"] = [
+                role_dict["permissions"] = [
                     {"key": p.permission_key, "value": p.permission_value} for p in permissions
                 ]
 
-            exported.append(group_dict)
+            exported.append(role_dict)
 
         return exported
 
@@ -104,21 +104,21 @@ class ConfigExportService:
 
         exported = []
         for user in users:
-            # Get user groups
+            # Get user roles
             from app.models.user import UserRole
 
             member_stmt = select(UserRole).where(UserRole.user_id == user.id)
             member_result = await self.db.execute(member_stmt)
             memberships = member_result.scalars().all()
 
-            group_stmt = select(Role).where(Role.id.in_([m.group_id for m in memberships]))
-            group_result = await self.db.execute(group_stmt)
-            groups = group_result.scalars().all()
+            role_stmt = select(Role).where(Role.id.in_([m.role_id for m in memberships]))
+            role_result = await self.db.execute(role_stmt)
+            roles = role_result.scalars().all()
 
             user_dict = {
                 "email": user.email,
                 "lastLoginAt": user.last_login_at.isoformat() if user.last_login_at else None,
-                "groups": [g.name for g in groups],
+                "roles": [r.name for r in roles],
             }
 
             exported.append(user_dict)
@@ -161,20 +161,8 @@ class ConfigExportService:
         result = await self.db.execute(stmt)
         functions = result.scalars().all()
 
-        # Get default group (Users) for functions without group_id
-        default_group_stmt = select(Role).where(Role.name == "Users")
-        default_group_result = await self.db.execute(default_group_stmt)
-        default_group = default_group_result.scalar_one_or_none()
-
         exported = []
         for func in functions:
-            # Get group name
-            group = None
-            if func.group_id:
-                group_stmt = select(Role).where(Role.id == func.group_id)
-                group_result = await self.db.execute(group_stmt)
-                group = group_result.scalar_one_or_none()
-
             func_dict = {
                 "name": func.name,
                 "namespace": func.namespace,
@@ -182,9 +170,6 @@ class ConfigExportService:
                 "code": func.code,
                 "inputSchema": func.input_schema,
                 "outputSchema": func.output_schema,
-                "groupName": group.name
-                if group
-                else (default_group.name if default_group else "Users"),
                 "requirements": func.requirements if func.requirements else None,
                 "enabledNamespaces": func.enabled_namespaces if func.enabled_namespaces else None,
             }
@@ -202,20 +187,9 @@ class ConfigExportService:
         result = await self.db.execute(stmt)
         agents = result.scalars().all()
 
-        # Get default group (Users) for agents without group_id
-        default_group_stmt = select(Role).where(Role.name == "Users")
-        default_group_result = await self.db.execute(default_group_stmt)
-        default_group = default_group_result.scalar_one_or_none()
-
         exported = []
         for agent in agents:
-            # Get group and provider names
-            group = None
-            if agent.group_id:
-                group_stmt = select(Role).where(Role.id == agent.group_id)
-                group_result = await self.db.execute(group_stmt)
-                group = group_result.scalar_one_or_none()
-
+            # Get provider name
             provider = None
             if agent.llm_provider_id:
                 provider_stmt = select(LLMProvider).where(LLMProvider.id == agent.llm_provider_id)
@@ -227,9 +201,6 @@ class ConfigExportService:
                 "namespace": agent.namespace,
                 "description": agent.description,
                 "model": agent.model,
-                "groupName": group.name
-                if group
-                else (default_group.name if default_group else "Users"),
                 "llmProviderName": provider.name if provider else None,
                 "temperature": agent.temperature,
                 "maxTokens": agent.max_tokens,
@@ -260,83 +231,46 @@ class ConfigExportService:
         result = await self.db.execute(stmt)
         webhooks = result.scalars().all()
 
-        # Get default group (Users) for webhooks without group_id
-        default_group_stmt = select(Role).where(Role.name == "Users")
-        default_group_result = await self.db.execute(default_group_stmt)
-        default_group = default_group_result.scalar_one_or_none()
-
         exported = []
         for webhook in webhooks:
-            # Get function and group names
-            func_stmt = select(Function).where(Function.id == webhook.function_id)
-            func_result = await self.db.execute(func_stmt)
-            function = func_result.scalar_one_or_none()
+            webhook_dict = {
+                "path": webhook.path,
+                "functionName": f"{webhook.function_namespace}/{webhook.function_name}",
+                "httpMethod": webhook.http_method,
+                "requiresAuth": webhook.requires_auth,
+                "description": webhook.description,
+                "defaultValues": webhook.default_values,
+            }
 
-            group = None
-            if webhook.group_id:
-                group_stmt = select(Role).where(Role.id == webhook.group_id)
-                group_result = await self.db.execute(group_stmt)
-                group = group_result.scalar_one_or_none()
-
-            if function:
-                webhook_dict = {
-                    "path": webhook.path,
-                    "functionNamespace": function.namespace,
-                    "functionName": function.name,
-                    "httpMethod": webhook.http_method,
-                    "requiresAuth": webhook.requires_auth,
-                    "description": webhook.description,
-                    "groupName": group.name
-                    if group
-                    else (default_group.name if default_group else "Users"),
-                    "defaultValues": webhook.default_values,
-                }
-
-                exported.append(_remove_none_values(webhook_dict))
+            exported.append(_remove_none_values(webhook_dict))
 
         return exported
 
     async def _export_schedules(self) -> list[dict]:
         """Export scheduled jobs"""
         stmt = select(ScheduledJob)
-        if self.managed_only:
-            stmt = stmt.where(ScheduledJob.managed_by == "config")
 
         result = await self.db.execute(stmt)
         schedules = result.scalars().all()
 
-        # Get default group (Users) for schedules without group_id
-        default_group_stmt = select(Role).where(Role.name == "Users")
-        default_group_result = await self.db.execute(default_group_stmt)
-        default_group = default_group_result.scalar_one_or_none()
-
         exported = []
         for schedule in schedules:
-            # Get function and group names
-            func_stmt = select(Function).where(Function.id == schedule.function_id)
-            func_result = await self.db.execute(func_stmt)
-            function = func_result.scalar_one_or_none()
+            schedule_dict = {
+                "name": schedule.name,
+                "scheduleType": schedule.schedule_type,
+                "functionName": f"{schedule.target_namespace}/{schedule.target_name}"
+                if schedule.schedule_type == "function"
+                else None,
+                "agentName": f"{schedule.target_namespace}/{schedule.target_name}"
+                if schedule.schedule_type == "agent"
+                else None,
+                "content": schedule.content,
+                "cronExpression": schedule.cron_expression,
+                "isActive": schedule.is_active,
+                "timezone": schedule.timezone,
+                "inputData": schedule.input_data,
+            }
 
-            group = None
-            if schedule.group_id:
-                group_stmt = select(Role).where(Role.id == schedule.group_id)
-                group_result = await self.db.execute(group_stmt)
-                group = group_result.scalar_one_or_none()
-
-            if function:
-                schedule_dict = {
-                    "name": schedule.name,
-                    "functionNamespace": function.namespace,
-                    "functionName": function.name,
-                    "cronExpression": schedule.cron_expression,
-                    "isActive": schedule.is_active,
-                    "timezone": schedule.timezone,
-                    "groupName": group.name
-                    if group
-                    else (default_group.name if default_group else "Users"),
-                    "inputData": schedule.input_data,
-                }
-
-                exported.append(_remove_none_values(schedule_dict))
+            exported.append(_remove_none_values(schedule_dict))
 
         return exported
