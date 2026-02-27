@@ -56,6 +56,16 @@ import type {
   DatabaseConnectionCreate,
   DatabaseConnectionUpdate,
   DatabaseConnectionTestResponse,
+  SchemaInfo,
+  DbTableInfo,
+  DbTableDetail,
+  DbViewInfo,
+  BrowseRowsResponse,
+  FilterCondition,
+  CreateTableRequest,
+  AlterTableRequest,
+  CreateViewRequest,
+  AnnotationItem,
   Query,
   QueryCreate,
   QueryUpdate,
@@ -632,6 +642,89 @@ class APIClient {
     ssl_mode?: string;
   }): Promise<DatabaseConnectionTestResponse> {
     const response = await this.configClient.post('/database-connections/test', data);
+    return response.data;
+  }
+
+  // Database Schema Browser
+  async listDbSchemas(connectionName: string): Promise<SchemaInfo[]> {
+    const response = await this.configClient.get(`/database-connections/${connectionName}/schemas`);
+    return response.data;
+  }
+
+  async listDbTables(connectionName: string, schema: string = 'public'): Promise<DbTableInfo[]> {
+    const response = await this.configClient.get(`/database-connections/${connectionName}/tables`, { params: { schema } });
+    return response.data;
+  }
+
+  async getDbTableDetail(connectionName: string, table: string, schema: string = 'public'): Promise<DbTableDetail> {
+    const response = await this.configClient.get(`/database-connections/${connectionName}/tables/${table}`, { params: { schema } });
+    return response.data;
+  }
+
+  async listDbViews(connectionName: string, schema: string = 'public'): Promise<DbViewInfo[]> {
+    const response = await this.configClient.get(`/database-connections/${connectionName}/views`, { params: { schema } });
+    return response.data;
+  }
+
+  async createDbTable(connectionName: string, data: CreateTableRequest): Promise<any> {
+    const response = await this.configClient.post(`/database-connections/${connectionName}/tables`, data);
+    return response.data;
+  }
+
+  async alterDbTable(connectionName: string, table: string, data: AlterTableRequest): Promise<any> {
+    const response = await this.configClient.patch(`/database-connections/${connectionName}/tables/${table}`, data);
+    return response.data;
+  }
+
+  async dropDbTable(connectionName: string, table: string, schema: string = 'public', cascade: boolean = false): Promise<void> {
+    await this.configClient.delete(`/database-connections/${connectionName}/tables/${table}`, { params: { schema, cascade } });
+  }
+
+  async createDbView(connectionName: string, data: CreateViewRequest): Promise<any> {
+    const response = await this.configClient.post(`/database-connections/${connectionName}/views`, data);
+    return response.data;
+  }
+
+  async dropDbView(connectionName: string, view: string, schema: string = 'public', cascade: boolean = false): Promise<void> {
+    await this.configClient.delete(`/database-connections/${connectionName}/views/${view}`, { params: { schema, cascade } });
+  }
+
+  async browseDbRows(
+    connectionName: string,
+    table: string,
+    params: { schema?: string; limit?: number; offset?: number; sort_by?: string; sort_order?: string; filters?: FilterCondition[] } = {}
+  ): Promise<BrowseRowsResponse> {
+    const { filters, ...rest } = params;
+    const queryParams: Record<string, any> = { ...rest };
+    if (filters && filters.length > 0) {
+      queryParams.filters = JSON.stringify(filters);
+    }
+    const response = await this.configClient.get(`/database-connections/${connectionName}/tables/${table}/rows`, { params: queryParams });
+    return response.data;
+  }
+
+  async insertDbRows(connectionName: string, table: string, rows: Record<string, any>[], schema: string = 'public'): Promise<any> {
+    const response = await this.configClient.post(`/database-connections/${connectionName}/tables/${table}/rows`, { rows }, { params: { schema } });
+    return response.data;
+  }
+
+  async updateDbRows(connectionName: string, table: string, where: Record<string, any>, set_values: Record<string, any>, schema: string = 'public'): Promise<any> {
+    const response = await this.configClient.patch(`/database-connections/${connectionName}/tables/${table}/rows`, { where, set_values }, { params: { schema } });
+    return response.data;
+  }
+
+  async deleteDbRows(connectionName: string, table: string, where: Record<string, any>, schema: string = 'public'): Promise<any> {
+    const response = await this.configClient.delete(`/database-connections/${connectionName}/tables/${table}/rows`, { data: { where }, params: { schema } });
+    return response.data;
+  }
+
+  async getDbAnnotations(connectionName: string): Promise<AnnotationItem[]> {
+    const response = await this.configClient.get(`/database-connections/${connectionName}/annotations`);
+    return response.data;
+  }
+
+  async upsertDbAnnotations(connectionName: string, annotations: AnnotationItem[]): Promise<any> {
+    const response = await this.configClient.put(`/database-connections/${connectionName}/annotations`, { annotations });
     return response.data;
   }
 

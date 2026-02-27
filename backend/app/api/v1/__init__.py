@@ -9,6 +9,7 @@ from .endpoints import (
     config,
     containers,
     database_connections,
+    database_schema,
     functions,
     llm_providers,
 
@@ -35,6 +36,7 @@ router.include_router(skills.router)
 router.include_router(collections.router)
 router.include_router(llm_providers.router, prefix="/llm-providers", tags=["llm-providers"])
 router.include_router(database_connections.router, prefix="/database-connections", tags=["database-connections"])
+router.include_router(database_schema.router, prefix="/database-connections", tags=["database-schema"])
 router.include_router(queries.router)
 
 router.include_router(roles.router)

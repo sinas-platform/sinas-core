@@ -727,6 +727,113 @@ export interface DatabaseConnectionTestResponse {
   latency_ms?: number;
 }
 
+// Database Schema Browser
+export interface SchemaInfo {
+  schema_name: string;
+}
+
+export interface ColumnInfo {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+  is_nullable: string;
+  column_default: string | null;
+  character_maximum_length: number | null;
+  numeric_precision: number | null;
+  numeric_scale: number | null;
+  ordinal_position: number;
+  is_primary_key: boolean;
+  display_name: string | null;
+  description: string | null;
+}
+
+export interface ConstraintInfo {
+  constraint_name: string;
+  constraint_type: string;
+  columns: string[];
+  definition: string | null;
+  ref_schema: string | null;
+  ref_table: string | null;
+  ref_columns: string[] | null;
+}
+
+export interface IndexInfo {
+  index_name: string;
+  definition: string;
+}
+
+export interface DbTableInfo {
+  table_name: string;
+  table_type: string;
+  estimated_rows: number;
+  size_bytes: number;
+  display_name: string | null;
+  description: string | null;
+}
+
+export interface DbTableDetail {
+  table_name: string;
+  schema_name: string;
+  columns: ColumnInfo[];
+  constraints: ConstraintInfo[];
+  indexes: IndexInfo[];
+  display_name: string | null;
+  description: string | null;
+}
+
+export interface DbViewInfo {
+  view_name: string;
+  view_definition: string | null;
+}
+
+export interface BrowseRowsResponse {
+  rows: Record<string, any>[];
+  total_count: number;
+}
+
+export interface FilterCondition {
+  column: string;
+  operator: string;
+  value?: any;
+}
+
+export interface ColumnDefinition {
+  name: string;
+  type: string;
+  nullable?: boolean;
+  default?: string;
+  primary_key?: boolean;
+}
+
+export interface CreateTableRequest {
+  table_name: string;
+  schema_name?: string;
+  columns: ColumnDefinition[];
+  if_not_exists?: boolean;
+}
+
+export interface AlterTableRequest {
+  schema_name?: string;
+  add_columns?: ColumnDefinition[];
+  drop_columns?: string[];
+  rename_columns?: Record<string, string>;
+}
+
+export interface CreateViewRequest {
+  name: string;
+  schema_name?: string;
+  sql: string;
+  or_replace?: boolean;
+}
+
+export interface AnnotationItem {
+  schema_name: string;
+  table_name: string;
+  column_name: string | null;
+  display_name: string | null;
+  description: string | null;
+}
+
 // Queries
 export interface Query {
   id: string;

@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { Cable, Plus, Trash2, Edit2, Zap } from 'lucide-react';
+import { Cable, Plus, Trash2, Edit2, Zap, Table2 } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { DatabaseConnection, DatabaseConnectionCreate, DatabaseConnectionUpdate, DatabaseConnectionTestResponse } from '../types';
 import { ErrorDisplay } from '../components/ErrorDisplay';
 
 export function DatabaseConnections() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -197,6 +199,13 @@ export function DatabaseConnections() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
+                  <button
+                    onClick={() => navigate(`/database-connections/${conn.name}`)}
+                    className="text-primary-600 hover:text-primary-400"
+                    title="Browse Tables"
+                  >
+                    <Table2 className="w-5 h-5" />
+                  </button>
                   <button
                     onClick={() => testMutation.mutate(conn.id)}
                     className="text-green-600 hover:text-green-400"

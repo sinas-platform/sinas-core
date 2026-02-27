@@ -380,6 +380,7 @@ The management API handles CRUD operations on all resources. These are typically
 /api/v1/workers/...               # Worker management (admin)
 /api/v1/containers/...            # Container pool management (admin)
 /api/v1/config/...                # Declarative config apply/validate/export (admin)
+/api/v1/queue/...                 # Queue stats, job list, DLQ, cancel (admin)
 /api/v1/request-logs/...          # Request log search (admin)
 ```
 
@@ -465,6 +466,18 @@ POST   /chats/{id}/approve-tool/{tool_call_id}       # Approve/reject a tool cal
 3. The LLM generates a response, possibly calling tools
 4. If tools are called, SINAS executes them (in parallel where possible) and sends results back to the LLM for a follow-up response
 5. The final response is streamed to the client via Server-Sent Events
+
+**Ephemeral chats** can be created with a TTL by passing `expires_in` (seconds) when creating the chat. Expired chats are automatically hard-deleted (with all messages) by a scheduled cleanup job:
+
+```bash
+# Create an ephemeral chat that expires in 1 hour
+curl -X POST http://localhost:8000/agents/default/default/chats \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"expires_in": 3600}'
+```
+
+**Chat archiving** — Chats can be archived via `PUT /chats/{id}` with `{"archived": true}`. Archived chats are hidden from the default list but can be included with `?include_archived=true`.
 
 **Agent-to-agent calls** go through the Redis queue so sub-agents run in separate workers, avoiding recursive blocking. Results stream back via Redis Streams.
 
@@ -1115,7 +1128,17 @@ GET /jobs/{job_id}/result
 # → {function output}
 ```
 
-Jobs go through states: `queued` → `running` → `completed` or `failed`. Results are stored in Redis with a 24-hour TTL.
+Jobs go through states: `queued` → `running` → `completed` or `failed`. Stale or orphaned jobs can be cancelled via the admin API:
+
+```bash
+# Cancel a running or queued job
+POST /api/v1/queue/jobs/{job_id}/cancel
+# → {"status": "cancelled", "job_id": "..."}
+```
+
+Cancellation updates the Redis status to `cancelled` and marks the DB execution record as `CANCELLED`. It also publishes to the done channel so any waiters unblock. This is a soft cancel — it does not kill running containers.
+
+Results are stored in Redis with a 24-hour TTL.
 
 ##### Package Management
 

@@ -14,6 +14,7 @@ from .pending_approval import PendingToolApproval
 from .schedule import ScheduledJob
 from .skill import Skill
 from .state import State
+from .table_annotation import TableAnnotation
 from .template import Template
 from .user import APIKey, OTPSession, RefreshToken, Role, RolePermission, User, UserRole
 from .webhook import Webhook
@@ -49,4 +50,5 @@ __all__ = [
     "File",
     "FileVersion",
     "ContentFilterEvaluation",
+    "TableAnnotation",
 ]

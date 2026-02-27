@@ -32,6 +32,8 @@ import { Collections } from './pages/Collections';
 import { CollectionDetail } from './pages/CollectionDetail';
 import { Apps } from './pages/Apps';
 import { DatabaseConnections } from './pages/DatabaseConnections';
+import { DatabaseConnectionDetail } from './pages/DatabaseConnectionDetail';
+import { DbTableDetail } from './pages/DbTableDetail';
 import { Queries } from './pages/Queries';
 import { QueryDetail } from './pages/QueryDetail';
 
@@ -119,6 +121,8 @@ function App() {
               <Route path="schedules/:scheduleId" element={<ScheduleEditor />} />
               <Route path="llm-providers" element={<LLMProviders />} />
               <Route path="database-connections" element={<DatabaseConnections />} />
+              <Route path="database-connections/:name" element={<DatabaseConnectionDetail />} />
+              <Route path="database-connections/:name/tables/:table" element={<DbTableDetail />} />
               <Route path="queries" element={<Queries />} />
               <Route path="queries/:namespace/:name" element={<QueryDetail />} />
               <Route path="skills" element={<Skills />} />
