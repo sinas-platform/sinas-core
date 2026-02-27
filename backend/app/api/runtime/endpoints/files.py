@@ -241,7 +241,7 @@ async def upload_file(
             if not filter_result.get("approved", True):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Content filter rejected file: {filter_result.get('reason', 'No reason provided')}"
+                    detail=filter_result.get('reason', 'No reason provided')
                 )
 
             # Apply modifications if provided

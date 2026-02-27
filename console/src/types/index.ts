@@ -634,6 +634,17 @@ export interface AppResourceRef {
   name: string;
 }
 
+export interface AppStateDependency {
+  namespace: string;
+  key?: string | null;
+}
+
+export interface AppStateDependencyStatus {
+  namespace: string;
+  key?: string | null;
+  exists: boolean;
+}
+
 export interface App {
   id: string;
   user_id: string;
@@ -644,6 +655,7 @@ export interface App {
   required_permissions: string[];
   optional_permissions: string[];
   exposed_namespaces: Record<string, string[]>;
+  state_dependencies: AppStateDependency[];
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
@@ -657,6 +669,7 @@ export interface AppCreate {
   required_permissions?: string[];
   optional_permissions?: string[];
   exposed_namespaces?: Record<string, string[]>;
+  state_dependencies?: AppStateDependency[];
 }
 
 export interface AppUpdate {
@@ -667,6 +680,7 @@ export interface AppUpdate {
   required_permissions?: string[];
   optional_permissions?: string[];
   exposed_namespaces?: Record<string, string[]>;
+  state_dependencies?: AppStateDependency[];
   is_active?: boolean;
 }
 
@@ -677,6 +691,7 @@ export interface AppStatus {
     required: { granted: string[]; missing: string[] };
     optional: { granted: string[]; missing: string[] };
   };
+  states: { satisfied: AppStateDependencyStatus[]; missing: AppStateDependencyStatus[] };
 }
 
 // Database Connections
