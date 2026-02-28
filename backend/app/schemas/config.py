@@ -108,6 +108,25 @@ class SkillConfig(BaseModel):
     content: str  # Markdown instructions (retrieved on demand)
 
 
+class ComponentConfig(BaseModel):
+    """Component configuration"""
+
+    namespace: str = "default"
+    name: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    sourceCode: str
+    inputSchema: Optional[dict[str, Any]] = None
+    enabledAgents: list[str] = Field(default_factory=list)
+    enabledFunctions: list[str] = Field(default_factory=list)
+    enabledQueries: list[str] = Field(default_factory=list)
+    enabledComponents: list[str] = Field(default_factory=list)
+    stateNamespacesReadonly: list[str] = Field(default_factory=list)
+    stateNamespacesReadwrite: list[str] = Field(default_factory=list)
+    cssOverrides: Optional[str] = None
+    visibility: str = "private"
+
+
 class EnabledSkillConfigYaml(BaseModel):
     """Configuration for an enabled skill in agent config"""
 
@@ -143,6 +162,7 @@ class AgentConfig(BaseModel):
         default_factory=dict
     )  # {"namespace/name": {"param": "value or {{template}}"}}
     enabledCollections: list[str] = Field(default_factory=list)  # List of "namespace/name" collection refs
+    enabledComponents: list[str] = Field(default_factory=list)  # List of "namespace/name" component refs
     isDefault: bool = False
 
 
@@ -226,6 +246,7 @@ class ConfigSpec(BaseModel):
     databaseConnections: list[DatabaseConnectionConfig] = Field(default_factory=list)
 
     skills: list[SkillConfig] = Field(default_factory=list)
+    components: list[ComponentConfig] = Field(default_factory=list)
     functions: list[FunctionConfig] = Field(default_factory=list)
     queries: list[QueryConfig] = Field(default_factory=list)
     collections: list[CollectionConfig] = Field(default_factory=list)

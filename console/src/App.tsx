@@ -26,6 +26,8 @@ import { Permissions } from './pages/Permissions';
 import { System } from './pages/System';
 import { Templates } from './pages/Templates';
 import { Skills } from './pages/Skills';
+import { Components } from './pages/Components';
+import { ComponentEditor } from './pages/ComponentEditor';
 import { Messages } from './pages/Messages';
 import { FunctionExecute } from './pages/FunctionExecute';
 import { Collections } from './pages/Collections';
@@ -126,6 +128,8 @@ function App() {
               <Route path="queries" element={<Queries />} />
               <Route path="queries/:namespace/:name" element={<QueryDetail />} />
               <Route path="skills" element={<Skills />} />
+              <Route path="components" element={<Components />} />
+              <Route path="components/:namespace/:name" element={<ComponentEditor />} />
               <Route path="collections" element={<Collections />} />
               <Route path="collections/:namespace/:name" element={<CollectionDetail />} />
               <Route path="templates" element={<Templates />} />

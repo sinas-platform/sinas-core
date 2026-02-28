@@ -90,6 +90,11 @@ class Agent(Base, PermissionMixin):
         JSON, default=list
     )  # List of "namespace/name" collection references
 
+    # Component access
+    enabled_components: Mapped[list[str]] = mapped_column(
+        JSON, default=list
+    )  # List of "namespace/name" component references
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[created_at]

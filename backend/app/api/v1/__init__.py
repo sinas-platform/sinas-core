@@ -6,6 +6,7 @@ from .endpoints import (
     api_keys,
     apps,
     collections,
+    components,
     config,
     containers,
     database_connections,
@@ -33,6 +34,7 @@ router = APIRouter()
 router.include_router(agents.router, prefix="/agents", tags=["agents"])
 router.include_router(apps.router)
 router.include_router(skills.router)
+router.include_router(components.router)
 router.include_router(collections.router)
 router.include_router(llm_providers.router, prefix="/llm-providers", tags=["llm-providers"])
 router.include_router(database_connections.router, prefix="/database-connections", tags=["database-connections"])

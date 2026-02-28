@@ -19,6 +19,7 @@ import {
   Webhook,
   FileText,
   Lightbulb,
+  Layers,
   Archive,
   AppWindow,
   Cable,
@@ -34,32 +35,28 @@ const navigationSections = [
     ],
   },
   {
-    name: 'AGENTS',
+    name: 'BUILD',
     items: [
       { name: 'Agents', href: '/agents', icon: Bot },
-      { name: 'Skills', href: '/skills', icon: Lightbulb },
-      { name: 'LLM Providers', href: '/llm-providers', icon: Brain },
-    ],
-  },
-  {
-    name: 'FUNCTIONS',
-    items: [
       { name: 'Functions', href: '/functions', icon: Code },
-      { name: 'Webhooks', href: '/webhooks', icon: Webhook },
-      { name: 'Schedules', href: '/schedules', icon: Clock },
-    ],
-  },
-  {
-    name: 'DATA',
-    items: [
-      { name: 'Database Connections', href: '/database-connections', icon: Cable },
+      { name: 'Components', href: '/components', icon: Layers },
       { name: 'Queries', href: '/queries', icon: SearchCode },
     ],
   },
   {
-    name: 'RESOURCES',
+    name: 'CONFIGURE',
     items: [
+      { name: 'Skills', href: '/skills', icon: Lightbulb },
+      { name: 'LLM Providers', href: '/llm-providers', icon: Brain },
+      { name: 'Database Connections', href: '/database-connections', icon: Cable },
+      { name: 'Webhooks', href: '/webhooks', icon: Webhook },
+      { name: 'Schedules', href: '/schedules', icon: Clock },
       { name: 'Templates', href: '/templates', icon: FileText },
+    ],
+  },
+  {
+    name: 'STORAGE',
+    items: [
       { name: 'Collections', href: '/collections', icon: Archive },
       { name: 'States', href: '/states', icon: Database },
     ],

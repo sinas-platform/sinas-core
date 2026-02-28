@@ -177,8 +177,14 @@ async def list_states(
             accessible_states.append(state)
             continue
 
-        # Shared state with namespace permission?
-        if state.visibility == "shared":
+        # Non-private state with namespace permission?
+        # :all sees everything (including private from others)
+        # :own sees shared/public from others
+        if state.visibility != "private":
+            namespace_perm_own = f"sinas.states/{state.namespace}.read:own"
+            if check_permission(permissions, namespace_perm_own):
+                accessible_states.append(state)
+        else:
             namespace_perm_all = f"sinas.states/{state.namespace}.read:all"
             if check_permission(permissions, namespace_perm_all):
                 accessible_states.append(state)
@@ -224,8 +230,13 @@ async def get_state(
         set_permission_used(request, namespace_perm)
         return _state_to_response(state)
 
-    # Shared state with namespace permission?
-    if state.visibility == "shared" and check_permission(permissions, namespace_perm_all):
+    # Non-private: accessible with :own permission
+    if state.visibility != "private" and check_permission(permissions, namespace_perm):
+        set_permission_used(request, namespace_perm)
+        return _state_to_response(state)
+
+    # Private from others: requires :all
+    if check_permission(permissions, namespace_perm_all):
         set_permission_used(request, namespace_perm_all)
         return _state_to_response(state)
 

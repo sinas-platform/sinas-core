@@ -2,6 +2,8 @@ from .agent import Agent
 from .app import App
 from .base import Base
 from .chat import Chat, Message
+from .component import Component
+from .component_share import ComponentShare
 from .database_connection import DatabaseConnection
 from .execution import Execution, StepExecution
 from .file import Collection, ContentFilterEvaluation, File, FileVersion
@@ -39,6 +41,8 @@ __all__ = [
     "Message",
     "Agent",
     "App",
+    "Component",
+    "ComponentShare",
     "LLMProvider",
     "DatabaseConnection",
     "Query",

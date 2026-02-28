@@ -39,6 +39,9 @@ import type {
   Skill,
   SkillCreate,
   SkillUpdate,
+  Component,
+  ComponentCreate,
+  ComponentUpdate,
   Collection,
   CollectionCreate,
   CollectionUpdate,
@@ -78,6 +81,18 @@ import type {
 export const API_BASE_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
   : `${window.location.protocol}//${window.location.hostname}`;
+
+/**
+ * Build a component render URL using a signed render token.
+ * Follows the same pattern as file serve tokens - purpose-scoped, short-lived JWTs
+ * that allow iframe access without Authorization headers.
+ */
+export function getComponentRenderUrl(renderToken: string, namespace: string, name: string, input?: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  params.set('token', renderToken);
+  if (input) params.set('input', JSON.stringify(input));
+  return `${API_BASE_URL}/components/${namespace}/${name}/render?${params.toString()}`;
+}
 
 const CONFIG_API_BASE_URL = `${API_BASE_URL}/api/v1`;
 const RUNTIME_API_BASE_URL = API_BASE_URL;
@@ -858,6 +873,36 @@ class APIClient {
 
   async deleteSkill(namespace: string, name: string): Promise<void> {
     await this.configClient.delete(`/skills/${namespace}/${name}`);
+  }
+
+  // Components
+  async listComponents(): Promise<Component[]> {
+    const response = await this.configClient.get('/components');
+    return response.data;
+  }
+
+  async getComponent(namespace: string, name: string): Promise<Component> {
+    const response = await this.configClient.get(`/components/${namespace}/${name}`);
+    return response.data;
+  }
+
+  async createComponent(data: ComponentCreate): Promise<Component> {
+    const response = await this.configClient.post('/components', data);
+    return response.data;
+  }
+
+  async updateComponent(namespace: string, name: string, data: ComponentUpdate): Promise<Component> {
+    const response = await this.configClient.put(`/components/${namespace}/${name}`, data);
+    return response.data;
+  }
+
+  async deleteComponent(namespace: string, name: string): Promise<void> {
+    await this.configClient.delete(`/components/${namespace}/${name}`);
+  }
+
+  async compileComponent(namespace: string, name: string): Promise<Component> {
+    const response = await this.configClient.post(`/components/${namespace}/${name}/compile`);
+    return response.data;
   }
 
   // Templates

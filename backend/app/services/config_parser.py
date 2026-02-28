@@ -151,12 +151,23 @@ class ConfigParser:
             result = await db.execute(select(QueryModel.namespace, QueryModel.name))
             db_query_names = {f"{namespace}/{name}" for (namespace, name) in result.fetchall()}
 
+        component_names = {
+            f"{c.get('namespace', 'default')}/{c['name']}" for c in spec.get("components", [])
+        }
+        db_component_names: set[str] = set()
+        if db:
+            from app.models.component import Component
+
+            result = await db.execute(select(Component.namespace, Component.name))
+            db_component_names = {f"{namespace}/{name}" for (namespace, name) in result.fetchall()}
+
         # Combined sets (config + database)
         all_role_names = role_names | db_role_names
         all_function_names = function_names | db_function_names
         all_agent_names = agent_names | db_agent_names
         all_skill_names = skill_names | db_skill_names
         all_collection_names = collection_names | db_collection_names
+        all_component_names = component_names | db_component_names
         all_llm_provider_names = llm_provider_names | db_llm_provider_names
         all_database_connection_names = database_connection_names | db_database_connection_names
         all_query_names = query_names | db_query_names
@@ -259,6 +270,60 @@ class ConfigParser:
                             ConfigValidationError(
                                 path=f"spec.agents[{i}].enabledCollections",
                                 message=f"Referenced collection '{coll_ref}' not defined",
+                            )
+                        )
+
+            # Validate enabled component references
+            if "enabledComponents" in agent and agent["enabledComponents"]:
+                for comp_ref in agent["enabledComponents"]:
+                    if comp_ref not in all_component_names:
+                        errors.append(
+                            ConfigValidationError(
+                                path=f"spec.agents[{i}].enabledComponents",
+                                message=f"Referenced component '{comp_ref}' not defined",
+                            )
+                        )
+
+        # Validate component references
+        for i, comp in enumerate(spec.get("components", [])):
+            # Validate enabled function references
+            if comp.get("enabledFunctions"):
+                for func_ref in comp["enabledFunctions"]:
+                    if func_ref not in all_function_names:
+                        errors.append(
+                            ConfigValidationError(
+                                path=f"spec.components[{i}].enabledFunctions",
+                                message=f"Referenced function '{func_ref}' not defined",
+                            )
+                        )
+            # Validate enabled query references
+            if comp.get("enabledQueries"):
+                for query_ref in comp["enabledQueries"]:
+                    if query_ref not in all_query_names:
+                        errors.append(
+                            ConfigValidationError(
+                                path=f"spec.components[{i}].enabledQueries",
+                                message=f"Referenced query '{query_ref}' not defined",
+                            )
+                        )
+            # Validate enabled agent references
+            if comp.get("enabledAgents"):
+                for agent_ref in comp["enabledAgents"]:
+                    if agent_ref not in all_agent_names:
+                        errors.append(
+                            ConfigValidationError(
+                                path=f"spec.components[{i}].enabledAgents",
+                                message=f"Referenced agent '{agent_ref}' not defined",
+                            )
+                        )
+            # Validate enabled component references
+            if comp.get("enabledComponents"):
+                for comp_ref in comp["enabledComponents"]:
+                    if comp_ref not in all_component_names:
+                        errors.append(
+                            ConfigValidationError(
+                                path=f"spec.components[{i}].enabledComponents",
+                                message=f"Referenced component '{comp_ref}' not defined",
                             )
                         )
 

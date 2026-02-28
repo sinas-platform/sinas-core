@@ -610,11 +610,11 @@ async def list_files(
     query = select(File).where(File.collection_id == coll.id)
 
     if not has_all_perm:
-        # Only show user's private files + all shared files
+        # Own files (any visibility) + non-private files from others
         query = query.where(
             or_(
                 File.user_id == user_id,
-                File.visibility == "shared"
+                File.visibility != "private"
             )
         )
 

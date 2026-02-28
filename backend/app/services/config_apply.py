@@ -20,6 +20,7 @@ from app.models.database_connection import DatabaseConnection
 from app.models.llm_provider import LLMProvider
 from app.models.query import Query
 from app.models.schedule import ScheduledJob
+from app.models.component import Component
 from app.models.skill import Skill
 from app.models.user import Role, RolePermission, User, UserRole
 from app.models.webhook import Webhook
@@ -113,6 +114,7 @@ class ConfigApplyService:
 
             await self._apply_functions(config.spec.functions, dry_run)
             await self._apply_skills(config.spec.skills, dry_run)
+            await self._apply_components(config.spec.components, dry_run)
             await self._apply_queries(config.spec.queries, dry_run)
             await self._apply_collections(config.spec.collections, dry_run)
             await self._apply_apps(config.spec.apps, dry_run)
@@ -813,6 +815,105 @@ class ConfigApplyService:
                     f"Error applying skill '{skill_config.namespace}/{skill_config.name}': {str(e)}"
                 )
 
+    async def _apply_components(self, components, dry_run: bool):
+        """Apply component configurations"""
+        for comp_config in components:
+            resource_name = f"{comp_config.namespace}/{comp_config.name}"
+            try:
+                stmt = select(Component).where(
+                    Component.namespace == comp_config.namespace,
+                    Component.name == comp_config.name,
+                )
+                result = await self.db.execute(stmt)
+                existing = result.scalar_one_or_none()
+
+                config_hash = self._calculate_hash(
+                    {
+                        "namespace": comp_config.namespace,
+                        "name": comp_config.name,
+                        "title": comp_config.title,
+                        "description": comp_config.description,
+                        "source_code": comp_config.sourceCode,
+                        "input_schema": comp_config.inputSchema or {},
+                        "enabled_agents": comp_config.enabledAgents,
+                        "enabled_functions": comp_config.enabledFunctions,
+                        "enabled_queries": comp_config.enabledQueries,
+                        "enabled_components": comp_config.enabledComponents,
+                        "state_namespaces_readonly": comp_config.stateNamespacesReadonly,
+                        "state_namespaces_readwrite": comp_config.stateNamespacesReadwrite,
+                        "css_overrides": comp_config.cssOverrides,
+                        "visibility": comp_config.visibility,
+                    }
+                )
+
+                if existing:
+                    if existing.managed_by != "config":
+                        self.warnings.append(
+                            f"Component '{resource_name}' exists but is not config-managed. Skipping."
+                        )
+                        self._track_change("unchanged", "components", resource_name)
+                        continue
+
+                    if existing.config_checksum == config_hash:
+                        self._track_change("unchanged", "components", resource_name)
+                        continue
+
+                    if not dry_run:
+                        source_changed = existing.source_code != comp_config.sourceCode
+                        existing.title = comp_config.title
+                        existing.description = comp_config.description
+                        existing.source_code = comp_config.sourceCode
+                        existing.input_schema = comp_config.inputSchema
+                        existing.enabled_agents = comp_config.enabledAgents
+                        existing.enabled_functions = comp_config.enabledFunctions
+                        existing.enabled_queries = comp_config.enabledQueries
+                        existing.enabled_components = comp_config.enabledComponents
+                        existing.state_namespaces_readonly = comp_config.stateNamespacesReadonly
+                        existing.state_namespaces_readwrite = comp_config.stateNamespacesReadwrite
+                        existing.css_overrides = comp_config.cssOverrides
+                        existing.visibility = comp_config.visibility
+                        existing.config_checksum = config_hash
+                        existing.updated_at = datetime.utcnow()
+                        if source_changed:
+                            existing.compile_status = "pending"
+                            existing.compiled_bundle = None
+                            existing.source_map = None
+                            existing.compile_errors = None
+                            existing.version += 1
+
+                    self._track_change("update", "components", resource_name)
+
+                else:
+                    if not dry_run:
+                        new_component = Component(
+                            namespace=comp_config.namespace,
+                            name=comp_config.name,
+                            title=comp_config.title,
+                            description=comp_config.description,
+                            source_code=comp_config.sourceCode,
+                            input_schema=comp_config.inputSchema,
+                            enabled_agents=comp_config.enabledAgents,
+                            enabled_functions=comp_config.enabledFunctions,
+                            enabled_queries=comp_config.enabledQueries,
+                            enabled_components=comp_config.enabledComponents,
+                            state_namespaces_readonly=comp_config.stateNamespacesReadonly,
+                            state_namespaces_readwrite=comp_config.stateNamespacesReadwrite,
+                            css_overrides=comp_config.cssOverrides,
+                            visibility=comp_config.visibility,
+                            user_id=self.owner_user_id,
+                            is_active=True,
+                            managed_by="config",
+                            config_name=self.config_name,
+                            config_checksum=config_hash,
+                            compile_status="pending",
+                        )
+                        self.db.add(new_component)
+
+                    self._track_change("create", "components", resource_name)
+
+            except Exception as e:
+                self.errors.append(f"Error applying component '{resource_name}': {str(e)}")
+
     async def _apply_collections(self, collections, dry_run: bool):
         """Apply collection configurations"""
         for coll_config in collections:
@@ -1035,6 +1136,9 @@ class ConfigApplyService:
                         "enabled_collections": sorted(agent_config.enabledCollections)
                         if agent_config.enabledCollections
                         else [],
+                        "enabled_components": sorted(agent_config.enabledComponents)
+                        if agent_config.enabledComponents
+                        else [],
                         "is_default": agent_config.isDefault,
                     }
                 )
@@ -1076,6 +1180,7 @@ class ConfigApplyService:
                         existing.enabled_queries = agent_config.enabledQueries
                         existing.query_parameters = agent_config.queryParameters
                         existing.enabled_collections = agent_config.enabledCollections
+                        existing.enabled_components = agent_config.enabledComponents
                         if agent_config.isDefault:
                             await self.db.execute(
                                 Agent.__table__.update()
@@ -1121,6 +1226,7 @@ class ConfigApplyService:
                             enabled_queries=agent_config.enabledQueries,
                             query_parameters=agent_config.queryParameters,
                             enabled_collections=agent_config.enabledCollections,
+                            enabled_components=agent_config.enabledComponents,
                             is_default=agent_config.isDefault,
                             user_id=self.owner_user_id,
                             is_active=True,

@@ -111,7 +111,17 @@ export type FileContent = {
   mime_type?: string;
 };
 
-export type UniversalContent = TextContent | ImageContent | AudioContent | FileContent;
+export type ComponentContent = {
+  type: "component";
+  namespace: string;
+  name: string;
+  title?: string;
+  input?: Record<string, unknown>;
+  compile_status?: string;
+  render_token?: string;
+};
+
+export type UniversalContent = TextContent | ImageContent | AudioContent | FileContent | ComponentContent;
 
 export type MessageContent = string | UniversalContent[];
 
@@ -541,6 +551,72 @@ export interface SkillUpdate {
   description?: string;
   content?: string;
   is_active?: boolean;
+}
+
+// Components
+export interface Component {
+  id: string;
+  user_id?: string;
+  namespace: string;
+  name: string;
+  title?: string;
+  description?: string;
+  source_code: string;
+  compiled_bundle?: string;
+  source_map?: string;
+  compile_status: string;
+  compile_errors?: Array<{ text: string; location?: { line: number; column: number } | null }>;
+  input_schema?: Record<string, unknown>;
+  enabled_agents: string[];
+  enabled_functions: string[];
+  enabled_queries: string[];
+  enabled_components: string[];
+  state_namespaces_readonly: string[];
+  state_namespaces_readwrite: string[];
+  css_overrides?: string;
+  visibility: string;
+  version: number;
+  is_published: boolean;
+  is_active: boolean;
+  render_token?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComponentCreate {
+  namespace?: string;
+  name: string;
+  title?: string;
+  description?: string;
+  source_code: string;
+  input_schema?: Record<string, unknown>;
+  enabled_agents?: string[];
+  enabled_functions?: string[];
+  enabled_queries?: string[];
+  enabled_components?: string[];
+  state_namespaces_readonly?: string[];
+  state_namespaces_readwrite?: string[];
+  css_overrides?: string;
+  visibility?: string;
+}
+
+export interface ComponentUpdate {
+  namespace?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  source_code?: string;
+  input_schema?: Record<string, unknown>;
+  enabled_agents?: string[];
+  enabled_functions?: string[];
+  enabled_queries?: string[];
+  enabled_components?: string[];
+  state_namespaces_readonly?: string[];
+  state_namespaces_readwrite?: string[];
+  css_overrides?: string;
+  visibility?: string;
+  is_active?: boolean;
+  is_published?: boolean;
 }
 
 // Collections
