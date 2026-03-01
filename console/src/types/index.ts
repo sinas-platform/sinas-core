@@ -348,6 +348,41 @@ export interface FunctionUpdate {
   is_active?: boolean;
 }
 
+// OpenAPI Import
+export interface OpenAPIImportRequest {
+  spec?: string;
+  spec_url?: string;
+  namespace?: string;
+  base_url_override?: string;
+  auth_type: string;
+  auth_header: string;
+  auth_state_namespace?: string;
+  auth_state_key?: string;
+  operations?: string[];
+  dry_run: boolean;
+}
+
+export interface OpenAPIFunctionPreview {
+  name: string;
+  description: string | null;
+  method: string;
+  path: string;
+  operation_id: string | null;
+  input_schema: Record<string, any>;
+  output_schema: Record<string, any>;
+  code: string;
+  status: string;
+  requirements: string[];
+}
+
+export interface OpenAPIImportResponse {
+  namespace: string;
+  functions: OpenAPIFunctionPreview[];
+  warnings: string[];
+  created: number;
+  skipped: number;
+}
+
 // Webhooks
 export interface Webhook {
   id: string;

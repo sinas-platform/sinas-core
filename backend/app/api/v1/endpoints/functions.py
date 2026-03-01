@@ -1,4 +1,5 @@
 """Functions API endpoints."""
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +10,10 @@ from app.core.permissions import check_permission
 from app.models.function import Function, FunctionVersion
 from app.models.dependency import Dependency
 from app.schemas import FunctionCreate, FunctionResponse, FunctionUpdate, FunctionVersionResponse
+from app.schemas.function import OpenAPIImportRequest, OpenAPIImportResponse
 from app.services.execution_engine import executor
 from app.services.icon_resolver import resolve_icon_url
+from app.services.openapi_import import import_openapi
 from app.services.package_service import detach_if_package_managed
 
 router = APIRouter(prefix="/functions", tags=["functions"])
@@ -52,6 +55,61 @@ async def validate_requirements(requirements: list[str], db: AsyncSession) -> No
             status_code=400,
             detail=f"Unapproved packages in requirements: {', '.join(unapproved)}. Contact admin to approve these packages first.",
         )
+
+
+@router.post("/import/openapi", response_model=OpenAPIImportResponse)
+async def import_openapi_spec(
+    request: Request,
+    import_data: OpenAPIImportRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user_data=Depends(get_current_user_with_permissions),
+):
+    """Import functions from an OpenAPI spec."""
+    user_id, permissions = current_user_data
+
+    # Check permission to create functions
+    permission = "sinas.functions.create:own"
+    if not check_permission(permissions, permission):
+        set_permission_used(request, permission, has_perm=False)
+        raise HTTPException(status_code=403, detail="Not authorized to create functions")
+    set_permission_used(request, permission)
+
+    # Get spec from either direct input or URL
+    spec_str = import_data.spec
+    if not spec_str and import_data.spec_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(import_data.spec_url)
+                resp.raise_for_status()
+                spec_str = resp.text
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to fetch spec from URL: {e}"
+            )
+
+    if not spec_str:
+        raise HTTPException(
+            status_code=400, detail="Either 'spec' or 'spec_url' must be provided"
+        )
+
+    try:
+        result = await import_openapi(
+            spec_str=spec_str,
+            namespace=import_data.namespace,
+            base_url_override=import_data.base_url_override,
+            auth_type=import_data.auth_type,
+            auth_header=import_data.auth_header,
+            auth_state_namespace=import_data.auth_state_namespace,
+            auth_state_key=import_data.auth_state_key,
+            selected_operations=import_data.operations,
+            dry_run=import_data.dry_run,
+            db=db,
+            user_id=user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
 
 
 @router.post("", response_model=FunctionResponse)

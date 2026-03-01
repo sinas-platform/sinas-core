@@ -511,6 +511,11 @@ class APIClient {
     return response.data;
   }
 
+  async importOpenAPI(data: import('../types').OpenAPIImportRequest): Promise<import('../types').OpenAPIImportResponse> {
+    const response = await this.configClient.post('/functions/import/openapi', data);
+    return response.data;
+  }
+
   // Webhooks
   async listWebhooks(): Promise<Webhook[]> {
     const response = await this.configClient.get('/webhooks');
