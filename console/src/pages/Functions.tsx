@@ -1,14 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/api';
-import { Code, Plus, Trash2, Edit2, Package, ChevronDown, ChevronRight, Search, Filter, Upload, Play, X } from 'lucide-react';
+import { Code, Plus, Trash2, Edit2, PackageOpen, ChevronDown, ChevronRight, Search, Filter, Upload, Play, X } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { SchemaFormField } from '../components/SchemaFormField';
 
 export function Functions() {
   const queryClient = useQueryClient();
-  const [showPackageModal, setShowPackageModal] = useState(false);
-  const [packageName, setPackageName] = useState('');
+  const [showDependencyModal, setShowDependencyModal] = useState(false);
+  const [dependencyName, setDependencyName] = useState('');
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
   const [showExecuteModal, setShowExecuteModal] = useState(false);
@@ -22,9 +22,9 @@ export function Functions() {
     retry: false,
   });
 
-  const { data: packages } = useQuery({
-    queryKey: ['packages'],
-    queryFn: () => apiClient.listPackages(),
+  const { data: dependencies } = useQuery({
+    queryKey: ['dependencies'],
+    queryFn: () => apiClient.listDependencies(),
     retry: false,
   });
 
@@ -59,19 +59,19 @@ export function Functions() {
     },
   });
 
-  const installPackageMutation = useMutation({
-    mutationFn: (data: any) => apiClient.installPackage(data),
+  const installDependencyMutation = useMutation({
+    mutationFn: (data: any) => apiClient.installDependency(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['packages'] });
-      setShowPackageModal(false);
-      setPackageName('');
+      queryClient.invalidateQueries({ queryKey: ['dependencies'] });
+      setShowDependencyModal(false);
+      setDependencyName('');
     },
   });
 
-  const deletePackageMutation = useMutation({
-    mutationFn: (packageId: string) => apiClient.deletePackage(packageId),
+  const deleteDependencyMutation = useMutation({
+    mutationFn: (dependencyId: string) => apiClient.deleteDependency(dependencyId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['packages'] });
+      queryClient.invalidateQueries({ queryKey: ['dependencies'] });
     },
   });
 
@@ -126,10 +126,10 @@ export function Functions() {
     setExecuteResult(null);
   };
 
-  const handleInstallPackage = (e: React.FormEvent) => {
+  const handleInstallDependency = (e: React.FormEvent) => {
     e.preventDefault();
-    if (packageName.trim()) {
-      installPackageMutation.mutate({ package_name: packageName.trim() });
+    if (dependencyName.trim()) {
+      installDependencyMutation.mutate({ package_name: dependencyName.trim() });
     }
   };
 
@@ -164,11 +164,11 @@ export function Functions() {
         </div>
         <div className="flex space-x-3">
           <button
-            onClick={() => setShowPackageModal(true)}
+            onClick={() => setShowDependencyModal(true)}
             className="btn btn-secondary flex items-center"
           >
-            <Package className="w-5 h-5 mr-2" />
-            Packages
+            <PackageOpen className="w-5 h-5 mr-2" />
+            Dependencies
           </button>
           <Link to="/functions/new/new" className="btn btn-primary flex items-center">
             <Plus className="w-5 h-5 mr-2" />
@@ -191,11 +191,11 @@ export function Functions() {
         </div>
       )}
 
-      {/* Packages Section */}
-      {packages && packages.length > 0 && (
+      {/* Dependencies Section */}
+      {dependencies && dependencies.length > 0 && (
         <div className="card bg-[#0d0d0d]">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-300">Installed Packages ({packages.length})</h3>
+            <h3 className="text-sm font-medium text-gray-300">Installed Dependencies ({dependencies.length})</h3>
             <button
               onClick={() => reloadWorkersMutation.mutate()}
               disabled={reloadWorkersMutation.isPending}
@@ -205,14 +205,14 @@ export function Functions() {
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {packages.map((pkg: any) => (
-              <div key={pkg.id} className="flex items-center bg-[#161616] px-3 py-1 rounded border border-white/[0.06]">
-                <span className="text-sm font-mono">{pkg.package_name}</span>
-                <span className="text-xs text-gray-500 ml-2">{pkg.version}</span>
+            {dependencies.map((dep: any) => (
+              <div key={dep.id} className="flex items-center bg-[#161616] px-3 py-1 rounded border border-white/[0.06]">
+                <span className="text-sm font-mono">{dep.package_name}</span>
+                <span className="text-xs text-gray-500 ml-2">{dep.version}</span>
                 <button
-                  onClick={() => deletePackageMutation.mutate(pkg.id)}
+                  onClick={() => deleteDependencyMutation.mutate(dep.id)}
                   className="ml-2 text-red-600 hover:text-red-400"
-                  disabled={deletePackageMutation.isPending}
+                  disabled={deleteDependencyMutation.isPending}
                 >
                   ×
                 </button>
@@ -474,49 +474,49 @@ export function Functions() {
         </div>
       )}
 
-      {/* Package Management Modal */}
-      {showPackageModal && (
+      {/* Dependency Management Modal */}
+      {showDependencyModal && (
         <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#161616] rounded-lg max-w-2xl w-full p-6">
-            <h2 className="text-xl font-semibold text-gray-100 mb-4">Manage Packages</h2>
+            <h2 className="text-xl font-semibold text-gray-100 mb-4">Manage Dependencies</h2>
 
-            <form onSubmit={handleInstallPackage} className="mb-6">
-              <label htmlFor="package" className="block text-sm font-medium text-gray-300 mb-2">
-                Install Package
+            <form onSubmit={handleInstallDependency} className="mb-6">
+              <label htmlFor="dependency" className="block text-sm font-medium text-gray-300 mb-2">
+                Install Dependency
               </label>
               <div className="flex space-x-2">
                 <input
-                  id="package"
+                  id="dependency"
                   type="text"
-                  value={packageName}
-                  onChange={(e) => setPackageName(e.target.value)}
+                  value={dependencyName}
+                  onChange={(e) => setDependencyName(e.target.value)}
                   placeholder="requests, numpy, pandas..."
                   className="input flex-1"
                 />
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={installPackageMutation.isPending || !packageName.trim()}
+                  disabled={installDependencyMutation.isPending || !dependencyName.trim()}
                 >
-                  {installPackageMutation.isPending ? 'Installing...' : 'Install'}
+                  {installDependencyMutation.isPending ? 'Installing...' : 'Install'}
                 </button>
               </div>
             </form>
 
             <div className="border-t border-white/[0.06] pt-4">
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Installed Packages</h3>
-              {packages && packages.length > 0 ? (
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Installed Dependencies</h3>
+              {dependencies && dependencies.length > 0 ? (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {packages.map((pkg: any) => (
-                    <div key={pkg.id} className="flex items-center justify-between p-2 bg-[#0d0d0d] rounded">
+                  {dependencies.map((dep: any) => (
+                    <div key={dep.id} className="flex items-center justify-between p-2 bg-[#0d0d0d] rounded">
                       <div>
-                        <span className="font-mono text-sm">{pkg.package_name}</span>
-                        <span className="text-xs text-gray-500 ml-2">{pkg.version}</span>
+                        <span className="font-mono text-sm">{dep.package_name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{dep.version}</span>
                       </div>
                       <button
-                        onClick={() => deletePackageMutation.mutate(pkg.id)}
+                        onClick={() => deleteDependencyMutation.mutate(dep.id)}
                         className="text-red-600 hover:text-red-400 text-sm"
-                        disabled={deletePackageMutation.isPending}
+                        disabled={deleteDependencyMutation.isPending}
                       >
                         Uninstall
                       </button>
@@ -524,13 +524,13 @@ export function Functions() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No packages installed</p>
+                <p className="text-sm text-gray-500">No dependencies installed</p>
               )}
             </div>
 
             <div className="flex justify-end mt-6">
               <button
-                onClick={() => setShowPackageModal(false)}
+                onClick={() => setShowDependencyModal(false)}
                 className="btn btn-secondary"
               >
                 Close

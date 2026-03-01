@@ -15,6 +15,7 @@ from .endpoints import (
     llm_providers,
 
     messages,
+    dependencies,
     packages,
     queries,
     queue,
@@ -49,7 +50,7 @@ router.include_router(templates.router, prefix="/templates", tags=["templates"])
 # Function configuration routes
 router.include_router(functions.router)
 router.include_router(webhooks.router)
-router.include_router(packages.router)
+router.include_router(dependencies.router)
 router.include_router(schedules.router)
 
 # Observability routes
@@ -60,6 +61,9 @@ router.include_router(request_logs.router)
 router.include_router(containers.router)
 router.include_router(workers.router)
 router.include_router(queue.router)
+
+# Package routes
+router.include_router(packages.router)
 
 # Configuration routes
 router.include_router(config.router, prefix="/config", tags=["config"])

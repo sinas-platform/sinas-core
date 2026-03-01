@@ -7,10 +7,11 @@ from app.core.auth import get_current_user_with_permissions, set_permission_used
 from app.core.database import get_db
 from app.core.permissions import check_permission
 from app.models.function import Function, FunctionVersion
-from app.models.package import InstalledPackage
+from app.models.dependency import Dependency
 from app.schemas import FunctionCreate, FunctionResponse, FunctionUpdate, FunctionVersionResponse
 from app.services.execution_engine import executor
 from app.services.icon_resolver import resolve_icon_url
+from app.services.package_service import detach_if_package_managed
 
 router = APIRouter(prefix="/functions", tags=["functions"])
 
@@ -32,7 +33,7 @@ async def validate_requirements(requirements: list[str], db: AsyncSession) -> No
         return
 
     # Get all approved packages
-    result = await db.execute(select(InstalledPackage.package_name))
+    result = await db.execute(select(Dependency.package_name))
     approved_packages = {row[0] for row in result.all()}
 
     # Check each requirement
@@ -205,6 +206,8 @@ async def update_function(
     )
 
     set_permission_used(request, f"sinas.functions/{namespace}/{name}.update")
+
+    detach_if_package_managed(function)
 
     # Check shared_pool permission (admin-only) if trying to enable it
     if function_data.shared_pool is not None and function_data.shared_pool:

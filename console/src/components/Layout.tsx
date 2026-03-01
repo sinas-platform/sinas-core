@@ -24,6 +24,7 @@ import {
   AppWindow,
   Cable,
   SearchCode,
+  Package,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -64,6 +65,7 @@ const navigationSections = [
   {
     name: 'ADMIN',
     items: [
+      { name: 'Packages', href: '/packages', icon: Package },
       { name: 'Apps', href: '/apps', icon: AppWindow },
       { name: 'Users & Roles', href: '/users', icon: Users },
       { name: 'API Keys', href: '/api-keys', icon: Key },

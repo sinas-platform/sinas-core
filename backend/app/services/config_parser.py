@@ -70,6 +70,25 @@ class ConfigParser:
             )
             return None, validation
 
+        # Add warnings for SinasPackage with environment-specific resources
+        if config.kind == "SinasPackage":
+            if config.spec.roles:
+                validation.warnings.append(
+                    "SinasPackage includes roles — these are environment-specific and will be skipped during install"
+                )
+            if config.spec.users:
+                validation.warnings.append(
+                    "SinasPackage includes users — these are environment-specific and will be skipped during install"
+                )
+            if config.spec.llmProviders:
+                validation.warnings.append(
+                    "SinasPackage includes llmProviders — these are environment-specific and will be skipped during install"
+                )
+            if config.spec.databaseConnections:
+                validation.warnings.append(
+                    "SinasPackage includes databaseConnections — these are environment-specific and will be skipped during install"
+                )
+
         # Validate references
         await ConfigParser._validate_references(config, validation, db)
 

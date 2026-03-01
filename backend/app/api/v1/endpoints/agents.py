@@ -17,6 +17,7 @@ from app.schemas.agent import (
     AgentUpdate,
 )
 from app.services.icon_resolver import resolve_icon_url
+from app.services.package_service import detach_if_package_managed
 
 router = APIRouter()
 
@@ -180,6 +181,8 @@ async def update_agent(
     # Additional ownership check for non-admin users
     if not has_all_permission and agent.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to update this agent")
+
+    detach_if_package_managed(agent)
 
     # Update fields
     if agent_data.namespace is not None:

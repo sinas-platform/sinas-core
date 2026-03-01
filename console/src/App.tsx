@@ -36,6 +36,7 @@ import { Apps } from './pages/Apps';
 import { DatabaseConnections } from './pages/DatabaseConnections';
 import { DatabaseConnectionDetail } from './pages/DatabaseConnectionDetail';
 import { DbTableDetail } from './pages/DbTableDetail';
+import { Packages } from './pages/Packages';
 import { Queries } from './pages/Queries';
 import { QueryDetail } from './pages/QueryDetail';
 
@@ -133,6 +134,7 @@ function App() {
               <Route path="collections" element={<Collections />} />
               <Route path="collections/:namespace/:name" element={<CollectionDetail />} />
               <Route path="templates" element={<Templates />} />
+              <Route path="packages" element={<Packages />} />
               <Route path="apps" element={<Apps />} />
               <Route path="config" element={<ConfigManager />} />
               <Route path="states" element={<States />} />

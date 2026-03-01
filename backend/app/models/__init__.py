@@ -10,7 +10,8 @@ from .file import Collection, ContentFilterEvaluation, File, FileVersion
 from .function import Function, FunctionVersion
 from .llm_provider import LLMProvider
 
-from .package import InstalledPackage
+from .dependency import Dependency
+from .package import Package
 from .query import Query
 from .pending_approval import PendingToolApproval
 from .schedule import ScheduledJob
@@ -29,7 +30,8 @@ __all__ = [
     "ScheduledJob",
     "Execution",
     "StepExecution",
-    "InstalledPackage",
+    "Dependency",
+    "Package",
     "User",
     "Role",
     "UserRole",

@@ -20,6 +20,7 @@ from app.schemas.component import (
     ComponentUpdate,
 )
 from app.api.runtime.endpoints.components import generate_component_render_token
+from app.services.package_service import detach_if_package_managed
 
 router = APIRouter(prefix="/components", tags=["components"])
 
@@ -211,6 +212,8 @@ async def update_component(
     )
 
     set_permission_used(request, f"sinas.components/{namespace}/{name}.update")
+
+    detach_if_package_managed(component)
 
     # Check for namespace/name conflicts if changing
     new_namespace = component_data.namespace or component.namespace

@@ -37,10 +37,21 @@ logger = logging.getLogger(__name__)
 class ConfigApplyService:
     """Service for applying declarative configuration"""
 
-    def __init__(self, db: AsyncSession, config_name: str, owner_user_id: str):
+    def __init__(
+        self,
+        db: AsyncSession,
+        config_name: str,
+        owner_user_id: str,
+        managed_by: str = "config",
+        auto_commit: bool = True,
+        skip_resource_types: Optional[set[str]] = None,
+    ):
         self.db = db
         self.config_name = config_name
         self.owner_user_id = owner_user_id
+        self.managed_by = managed_by
+        self.auto_commit = auto_commit
+        self.skip_resource_types = skip_resource_types or set()
         self.summary = ConfigApplySummary()
         self.changes: list[ResourceChange] = []
         self.errors: list[str] = []
@@ -107,22 +118,35 @@ class ConfigApplyService:
         """
         try:
             # Apply resources in dependency order
-            await self._apply_roles(config.spec.roles, dry_run)
-            await self._apply_users(config.spec.users, dry_run)
-            await self._apply_llm_providers(config.spec.llmProviders, dry_run)
-            await self._apply_database_connections(config.spec.databaseConnections, dry_run)
+            if "roles" not in self.skip_resource_types:
+                await self._apply_roles(config.spec.roles, dry_run)
+            if "users" not in self.skip_resource_types:
+                await self._apply_users(config.spec.users, dry_run)
+            if "llmProviders" not in self.skip_resource_types:
+                await self._apply_llm_providers(config.spec.llmProviders, dry_run)
+            if "databaseConnections" not in self.skip_resource_types:
+                await self._apply_database_connections(config.spec.databaseConnections, dry_run)
 
-            await self._apply_functions(config.spec.functions, dry_run)
-            await self._apply_skills(config.spec.skills, dry_run)
-            await self._apply_components(config.spec.components, dry_run)
-            await self._apply_queries(config.spec.queries, dry_run)
-            await self._apply_collections(config.spec.collections, dry_run)
-            await self._apply_apps(config.spec.apps, dry_run)
-            await self._apply_agents(config.spec.agents, dry_run)
-            await self._apply_webhooks(config.spec.webhooks, dry_run)
-            await self._apply_schedules(config.spec.schedules, dry_run)
+            if "functions" not in self.skip_resource_types:
+                await self._apply_functions(config.spec.functions, dry_run)
+            if "skills" not in self.skip_resource_types:
+                await self._apply_skills(config.spec.skills, dry_run)
+            if "components" not in self.skip_resource_types:
+                await self._apply_components(config.spec.components, dry_run)
+            if "queries" not in self.skip_resource_types:
+                await self._apply_queries(config.spec.queries, dry_run)
+            if "collections" not in self.skip_resource_types:
+                await self._apply_collections(config.spec.collections, dry_run)
+            if "apps" not in self.skip_resource_types:
+                await self._apply_apps(config.spec.apps, dry_run)
+            if "agents" not in self.skip_resource_types:
+                await self._apply_agents(config.spec.agents, dry_run)
+            if "webhooks" not in self.skip_resource_types:
+                await self._apply_webhooks(config.spec.webhooks, dry_run)
+            if "schedules" not in self.skip_resource_types:
+                await self._apply_schedules(config.spec.schedules, dry_run)
 
-            if not dry_run:
+            if not dry_run and self.auto_commit:
                 await self.db.commit()
 
             return ConfigApplyResponse(
@@ -164,9 +188,9 @@ class ConfigApplyService:
 
                 if existing:
                     # Check if config-managed
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Role '{role_config.name}' exists but is not config-managed. Skipping."
+                            f"Role '{role_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "roles", role_config.name)
                         self.role_ids[role_config.name] = str(existing.id)
@@ -197,7 +221,7 @@ class ConfigApplyService:
                             name=role_config.name,
                             description=role_config.description,
                             email_domain=role_config.emailDomain,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -254,9 +278,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"User '{user_config.email}' exists but is not config-managed. Skipping."
+                            f"User '{user_config.email}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "users", user_config.email)
                         self.user_ids[user_config.email] = str(existing.id)
@@ -280,7 +304,7 @@ class ConfigApplyService:
                         new_user = User(
                             email=user_config.email,
                             is_active=user_config.isActive,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -342,9 +366,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"LLM provider '{provider_config.name}' exists but is not config-managed. Skipping."
+                            f"LLM provider '{provider_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "llmProviders", provider_config.name)
                         self.llm_provider_ids[provider_config.name] = str(existing.id)
@@ -382,7 +406,7 @@ class ConfigApplyService:
                             api_endpoint=provider_config.endpoint,
                             config={"models": provider_config.models},
                             is_active=provider_config.isActive,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -424,9 +448,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Database connection '{conn_config.name}' exists but is not config-managed. Skipping."
+                            f"Database connection '{conn_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change(
                             "unchanged", "databaseConnections", conn_config.name
@@ -476,7 +500,7 @@ class ConfigApplyService:
                             ssl_mode=conn_config.sslMode,
                             config=conn_config.config,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -536,9 +560,9 @@ class ConfigApplyService:
                         continue
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Query '{resource_name}' exists but is not config-managed. Skipping."
+                            f"Query '{resource_name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "queries", resource_name)
                         continue
@@ -576,7 +600,7 @@ class ConfigApplyService:
                             max_rows=query_config.maxRows,
                             user_id=self.owner_user_id,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -613,9 +637,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Function '{func_config.name}' exists but is not config-managed. Skipping."
+                            f"Function '{func_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "functions", func_config.name)
                         self.function_ids[func_config.name] = str(existing.id)
@@ -668,7 +692,7 @@ class ConfigApplyService:
                             user_id=self.owner_user_id,
                             current_version=1,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -768,9 +792,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Skill '{skill_config.namespace}/{skill_config.name}' exists but is not config-managed. Skipping."
+                            f"Skill '{skill_config.namespace}/{skill_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change(
                             "unchanged", "skills", f"{skill_config.namespace}/{skill_config.name}"
@@ -803,7 +827,7 @@ class ConfigApplyService:
                             content=skill_config.content,
                             user_id=self.owner_user_id,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -850,9 +874,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Component '{resource_name}' exists but is not config-managed. Skipping."
+                            f"Component '{resource_name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "components", resource_name)
                         continue
@@ -905,7 +929,7 @@ class ConfigApplyService:
                             visibility=comp_config.visibility,
                             user_id=self.owner_user_id,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                             compile_status="pending",
@@ -945,9 +969,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Collection '{resource_name}' exists but is not config-managed. Skipping."
+                            f"Collection '{resource_name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "collections", resource_name)
                         self.collection_ids[resource_name] = str(existing.id)
@@ -987,7 +1011,7 @@ class ConfigApplyService:
                             is_public=coll_config.isPublic,
                             allow_shared_files=coll_config.allowSharedFiles,
                             allow_private_files=coll_config.allowPrivateFiles,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -1032,9 +1056,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"App '{resource_name}' exists but is not config-managed. Skipping."
+                            f"App '{resource_name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "apps", resource_name)
                         continue
@@ -1072,7 +1096,7 @@ class ConfigApplyService:
                             exposed_namespaces=app_config.exposedNamespaces,
                             user_id=self.owner_user_id,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -1151,9 +1175,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Agent '{agent_config.name}' exists but is not config-managed. Skipping."
+                            f"Agent '{agent_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "agents", agent_config.name)
                         self.agent_ids[agent_config.name] = str(existing.id)
@@ -1239,7 +1263,7 @@ class ConfigApplyService:
                             is_default=agent_config.isDefault,
                             user_id=self.owner_user_id,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )
@@ -1274,9 +1298,9 @@ class ConfigApplyService:
                 )
 
                 if existing:
-                    if existing.managed_by != "config":
+                    if existing.managed_by != self.managed_by:
                         self.warnings.append(
-                            f"Webhook '{webhook_config.path}' exists but is not config-managed. Skipping."
+                            f"Webhook '{webhook_config.path}' exists but is not managed by '{self.managed_by}'. Skipping."
                         )
                         self._track_change("unchanged", "webhooks", webhook_config.path)
                         continue
@@ -1323,7 +1347,7 @@ class ConfigApplyService:
                             requires_auth=webhook_config.requiresAuth,
                             default_values=webhook_config.defaultValues,
                             is_active=True,
-                            managed_by="config",
+                            managed_by=self.managed_by,
                             config_name=self.config_name,
                             config_checksum=config_hash,
                         )

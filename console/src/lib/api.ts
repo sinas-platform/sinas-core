@@ -572,23 +572,59 @@ class APIClient {
     return response.data;
   }
 
-  // Packages
+  // Dependencies (pip packages for function containers)
+  async listDependencies(): Promise<any[]> {
+    const response = await this.configClient.get('/dependencies');
+    return response.data;
+  }
+
+  async installDependency(data: any): Promise<any> {
+    const response = await this.configClient.post('/dependencies', data);
+    return response.data;
+  }
+
+  async deleteDependency(dependencyId: string): Promise<void> {
+    await this.configClient.delete(`/dependencies/${dependencyId}`);
+  }
+
+  async reloadWorkers(): Promise<any> {
+    const response = await this.configClient.post('/workers/reload');
+    return response.data;
+  }
+
+  // Packages (installable integration packages)
   async listPackages(): Promise<any[]> {
     const response = await this.configClient.get('/packages');
     return response.data;
   }
 
-  async installPackage(data: any): Promise<any> {
-    const response = await this.configClient.post('/packages', data);
+  async getPackage(name: string): Promise<any> {
+    const response = await this.configClient.get(`/packages/${name}`);
     return response.data;
   }
 
-  async deletePackage(packageId: string): Promise<void> {
-    await this.configClient.delete(`/packages/${packageId}`);
+  async installPackage(source: string): Promise<any> {
+    const response = await this.configClient.post('/packages/install', { source });
+    return response.data;
   }
 
-  async reloadWorkers(): Promise<any> {
-    const response = await this.configClient.post('/workers/reload');
+  async previewPackage(source: string): Promise<any> {
+    const response = await this.configClient.post('/packages/preview', { source });
+    return response.data;
+  }
+
+  async createPackageYaml(data: any): Promise<any> {
+    const response = await this.configClient.post('/packages/create', data);
+    return response.data;
+  }
+
+  async uninstallPackage(name: string): Promise<any> {
+    const response = await this.configClient.delete(`/packages/${name}`);
+    return response.data;
+  }
+
+  async exportPackage(name: string): Promise<string> {
+    const response = await this.configClient.get(`/packages/${name}/export`);
     return response.data;
   }
 

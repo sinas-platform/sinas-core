@@ -34,10 +34,11 @@ def _remove_none_values(d: dict) -> dict:
 class ConfigExportService:
     """Service for exporting current state to YAML configuration"""
 
-    def __init__(self, db: AsyncSession, include_secrets: bool = False, managed_only: bool = False):
+    def __init__(self, db: AsyncSession, include_secrets: bool = False, managed_only: bool = False, managed_by: str = "config"):
         self.db = db
         self.include_secrets = include_secrets
         self.managed_only = managed_only
+        self.managed_by = managed_by
 
     async def export_config(self) -> str:
         """Export current configuration to YAML string"""
@@ -66,7 +67,7 @@ class ConfigExportService:
         """Export roles"""
         stmt = select(Role)
         if self.managed_only:
-            stmt = stmt.where(Role.managed_by == "config")
+            stmt = stmt.where(Role.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         roles = result.scalars().all()
@@ -97,7 +98,7 @@ class ConfigExportService:
         """Export users"""
         stmt = select(User)
         if self.managed_only:
-            stmt = stmt.where(User.managed_by == "config")
+            stmt = stmt.where(User.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         users = result.scalars().all()
@@ -129,7 +130,7 @@ class ConfigExportService:
         """Export LLM providers"""
         stmt = select(LLMProvider)
         if self.managed_only:
-            stmt = stmt.where(LLMProvider.managed_by == "config")
+            stmt = stmt.where(LLMProvider.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         providers = result.scalars().all()
@@ -156,7 +157,7 @@ class ConfigExportService:
         """Export functions"""
         stmt = select(Function)
         if self.managed_only:
-            stmt = stmt.where(Function.managed_by == "config")
+            stmt = stmt.where(Function.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         functions = result.scalars().all()
@@ -183,7 +184,7 @@ class ConfigExportService:
         """Export agents"""
         stmt = select(Agent)
         if self.managed_only:
-            stmt = stmt.where(Agent.managed_by == "config")
+            stmt = stmt.where(Agent.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         agents = result.scalars().all()
@@ -228,7 +229,7 @@ class ConfigExportService:
         """Export webhooks"""
         stmt = select(Webhook)
         if self.managed_only:
-            stmt = stmt.where(Webhook.managed_by == "config")
+            stmt = stmt.where(Webhook.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         webhooks = result.scalars().all()

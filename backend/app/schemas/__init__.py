@@ -7,6 +7,7 @@ from .chat import *
 from .execution import *
 from .function import *
 
+from .dependency import *
 from .package import *
 from .role import *
 from .schedule import *

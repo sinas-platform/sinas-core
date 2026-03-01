@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.permissions import check_permission
 from app.models.file import Collection
 from app.schemas.file import CollectionCreate, CollectionResponse, CollectionUpdate
+from app.services.package_service import detach_if_package_managed
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -146,6 +147,8 @@ async def update_collection(
     )
 
     set_permission_used(request, f"sinas.collections/{namespace}/{name}.update")
+
+    detach_if_package_managed(collection)
 
     # Update fields
     if collection_data.metadata_schema is not None:

@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.permissions import check_permission
 from app.models.app import App
 from app.schemas.app import AppCreate, AppResponse, AppUpdate
+from app.services.package_service import detach_if_package_managed
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 
@@ -132,6 +133,8 @@ async def update_app(
     )
 
     set_permission_used(request, f"sinas.apps/{namespace}/{name}.update")
+
+    detach_if_package_managed(app)
 
     # If namespace or name is being updated, check for conflicts
     new_namespace = app_data.namespace or app.namespace

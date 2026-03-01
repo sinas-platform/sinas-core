@@ -259,18 +259,43 @@ class ConfigSpec(BaseModel):
     schedules: list[ScheduleConfig] = Field(default_factory=list)
 
 
+class PackageMetadataConfig(BaseModel):
+    """Package metadata for SinasPackage kind"""
+
+    name: str
+    version: str = "1.0.0"
+    description: Optional[str] = None
+    author: Optional[str] = None
+    url: Optional[str] = None
+
+
 class SinasConfig(BaseModel):
     """Root configuration schema"""
 
     apiVersion: str = Field(..., pattern=r"^sinas\.co/v\d+$")
-    kind: str = Field(..., pattern=r"^SinasConfig$")
-    metadata: ConfigMetadata
+    kind: str = Field(..., pattern=r"^(SinasConfig|SinasPackage)$")
+    metadata: Optional[ConfigMetadata] = None
+    package: Optional[PackageMetadataConfig] = None
     spec: ConfigSpec
 
     @validator("apiVersion")
     def validate_api_version(cls, v):
         if v != "sinas.co/v1":
             raise ValueError("Only apiVersion 'sinas.co/v1' is currently supported")
+        return v
+
+    @validator("metadata", always=True)
+    def validate_metadata(cls, v, values):
+        kind = values.get("kind")
+        if kind == "SinasConfig" and v is None:
+            raise ValueError("'metadata' is required for SinasConfig kind")
+        return v
+
+    @validator("package", always=True)
+    def validate_package(cls, v, values):
+        kind = values.get("kind")
+        if kind == "SinasPackage" and v is None:
+            raise ValueError("'package' is required for SinasPackage kind")
         return v
 
 
