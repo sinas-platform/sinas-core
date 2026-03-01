@@ -242,6 +242,13 @@ export function Functions() {
               <div key={func.id} className="card">
                 <div className="flex items-center gap-4">
                   {/* Icon */}
+                  <div className="flex-shrink-0">
+                    {func.icon_url ? (
+                      <img src={func.icon_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                    ) : (
+                      <Code className="w-8 h-8 text-gray-500" />
+                    )}
+                  </div>
                   <button
                     onClick={() => toggleFunctionExpanded(func.id)}
                     className="flex-shrink-0 text-gray-500 hover:text-gray-400 transition-colors"

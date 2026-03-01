@@ -10,8 +10,16 @@ from app.models.function import Function, FunctionVersion
 from app.models.package import InstalledPackage
 from app.schemas import FunctionCreate, FunctionResponse, FunctionUpdate, FunctionVersionResponse
 from app.services.execution_engine import executor
+from app.services.icon_resolver import resolve_icon_url
 
 router = APIRouter(prefix="/functions", tags=["functions"])
+
+
+async def _function_response(func: "Function", db: AsyncSession) -> FunctionResponse:
+    """Build FunctionResponse with resolved icon_url."""
+    resp = FunctionResponse.model_validate(func)
+    resp.icon_url = await resolve_icon_url(func.icon, db)
+    return resp
 
 
 async def validate_requirements(requirements: list[str], db: AsyncSession) -> None:
@@ -98,6 +106,7 @@ async def create_function(
         input_schema=function_data.input_schema,
         output_schema=function_data.output_schema,
         requirements=function_data.requirements,
+        icon=function_data.icon,
         shared_pool=function_data.shared_pool,
         requires_approval=function_data.requires_approval,
     )
@@ -118,7 +127,7 @@ async def create_function(
     db.add(version)
     await db.commit()
 
-    return FunctionResponse.model_validate(function)
+    return await _function_response(function, db)
 
 
 @router.get("", response_model=list[FunctionResponse])
@@ -144,7 +153,7 @@ async def list_functions(
 
     set_permission_used(request, "sinas.functions.read")
 
-    return [FunctionResponse.model_validate(f) for f in functions]
+    return [await _function_response(f, db) for f in functions]
 
 
 @router.get("/{namespace}/{name}", response_model=FunctionResponse)
@@ -170,7 +179,7 @@ async def get_function(
 
     set_permission_used(request, f"sinas.functions/{namespace}/{name}.read")
 
-    return FunctionResponse.model_validate(function)
+    return await _function_response(function, db)
 
 
 @router.put("/{namespace}/{name}", response_model=FunctionResponse)
@@ -268,6 +277,8 @@ async def update_function(
         function.output_schema = function_data.output_schema
     if function_data.requirements is not None:
         function.requirements = function_data.requirements
+    if function_data.icon is not None:
+        function.icon = function_data.icon
     if function_data.shared_pool is not None:
         function.shared_pool = function_data.shared_pool
     if function_data.requires_approval is not None:
@@ -283,7 +294,7 @@ async def update_function(
     # Clear execution engine cache to ensure updated code is used
     executor.clear_cache()
 
-    return FunctionResponse.model_validate(function)
+    return await _function_response(function, db)
 
 
 @router.delete("/{namespace}/{name}")

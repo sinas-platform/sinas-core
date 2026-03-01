@@ -172,6 +172,7 @@ class ConfigExportService:
                 "outputSchema": func.output_schema,
                 "requirements": func.requirements if func.requirements else None,
                 "enabledNamespaces": func.enabled_namespaces if func.enabled_namespaces else None,
+                "icon": func.icon,
             }
 
             exported.append(_remove_none_values(func_dict))
@@ -216,6 +217,7 @@ class ConfigExportService:
                 "stateNamespacesReadwrite": agent.state_namespaces_readwrite
                 if agent.state_namespaces_readwrite
                 else None,
+                "icon": agent.icon,
             }
 
             exported.append(_remove_none_values(agent_dict))

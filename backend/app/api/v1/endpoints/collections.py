@@ -57,6 +57,7 @@ async def create_collection(
         post_upload_function=collection_data.post_upload_function,
         max_file_size_mb=collection_data.max_file_size_mb,
         max_total_size_gb=collection_data.max_total_size_gb,
+        is_public=collection_data.is_public,
         allow_shared_files=collection_data.allow_shared_files,
         allow_private_files=collection_data.allow_private_files,
     )
@@ -157,6 +158,8 @@ async def update_collection(
         collection.max_file_size_mb = collection_data.max_file_size_mb
     if collection_data.max_total_size_gb is not None:
         collection.max_total_size_gb = collection_data.max_total_size_gb
+    if collection_data.is_public is not None:
+        collection.is_public = collection_data.is_public
     if collection_data.allow_shared_files is not None:
         collection.allow_shared_files = collection_data.allow_shared_files
     if collection_data.allow_private_files is not None:

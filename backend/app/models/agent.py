@@ -97,6 +97,9 @@ class Agent(Base, PermissionMixin):
         JSON, nullable=False, default=list, server_default="[]"
     )  # List of "namespace/name" component references
 
+    # Icon reference ("collection:ns/coll/file" or "url:https://...")
+    icon: Mapped[Optional[str]] = mapped_column(String(512))
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[created_at]

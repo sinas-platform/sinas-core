@@ -97,6 +97,7 @@ class FunctionConfig(BaseModel):
     requirements: list[str] = Field(default_factory=list)
     enabledNamespaces: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    icon: Optional[str] = None
 
 
 class SkillConfig(BaseModel):
@@ -163,6 +164,7 @@ class AgentConfig(BaseModel):
     )  # {"namespace/name": {"param": "value or {{template}}"}}
     enabledCollections: list[str] = Field(default_factory=list)  # List of "namespace/name" collection refs
     enabledComponents: list[str] = Field(default_factory=list)  # List of "namespace/name" component refs
+    icon: Optional[str] = None
     isDefault: bool = False
 
 
@@ -233,6 +235,7 @@ class CollectionConfig(BaseModel):
     postUploadFunction: Optional[str] = None  # "namespace/name" format
     maxFileSizeMb: int = 100
     maxTotalSizeGb: int = 10
+    isPublic: bool = False
     allowSharedFiles: bool = True
     allowPrivateFiles: bool = True
 

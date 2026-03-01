@@ -608,6 +608,7 @@ class ConfigApplyService:
                         if func_config.requirements
                         else [],
                         "tags": sorted(func_config.tags) if func_config.tags else [],
+                        "icon": func_config.icon,
                     }
                 )
 
@@ -633,6 +634,7 @@ class ConfigApplyService:
                         existing.output_schema = func_config.outputSchema
                         existing.requirements = func_config.requirements
                         existing.tags = func_config.tags
+                        existing.icon = func_config.icon
                         existing.config_checksum = config_hash
                         existing.updated_at = datetime.utcnow()
 
@@ -662,6 +664,7 @@ class ConfigApplyService:
                             requirements=func_config.requirements,
                             enabled_namespaces=func_config.enabledNamespaces,
                             tags=func_config.tags,
+                            icon=func_config.icon,
                             user_id=self.owner_user_id,
                             current_version=1,
                             is_active=True,
@@ -935,6 +938,7 @@ class ConfigApplyService:
                         "post_upload_function": coll_config.postUploadFunction,
                         "max_file_size_mb": coll_config.maxFileSizeMb,
                         "max_total_size_gb": coll_config.maxTotalSizeGb,
+                        "is_public": coll_config.isPublic,
                         "allow_shared_files": coll_config.allowSharedFiles,
                         "allow_private_files": coll_config.allowPrivateFiles,
                     }
@@ -960,6 +964,7 @@ class ConfigApplyService:
                         existing.post_upload_function = coll_config.postUploadFunction
                         existing.max_file_size_mb = coll_config.maxFileSizeMb
                         existing.max_total_size_gb = coll_config.maxTotalSizeGb
+                        existing.is_public = coll_config.isPublic
                         existing.allow_shared_files = coll_config.allowSharedFiles
                         existing.allow_private_files = coll_config.allowPrivateFiles
                         existing.config_checksum = config_hash
@@ -979,6 +984,7 @@ class ConfigApplyService:
                             post_upload_function=coll_config.postUploadFunction,
                             max_file_size_mb=coll_config.maxFileSizeMb,
                             max_total_size_gb=coll_config.maxTotalSizeGb,
+                            is_public=coll_config.isPublic,
                             allow_shared_files=coll_config.allowSharedFiles,
                             allow_private_files=coll_config.allowPrivateFiles,
                             managed_by="config",
@@ -1139,6 +1145,7 @@ class ConfigApplyService:
                         "enabled_components": sorted(agent_config.enabledComponents)
                         if agent_config.enabledComponents
                         else [],
+                        "icon": agent_config.icon,
                         "is_default": agent_config.isDefault,
                     }
                 )
@@ -1181,6 +1188,7 @@ class ConfigApplyService:
                         existing.query_parameters = agent_config.queryParameters
                         existing.enabled_collections = agent_config.enabledCollections
                         existing.enabled_components = agent_config.enabledComponents
+                        existing.icon = agent_config.icon
                         if agent_config.isDefault:
                             await self.db.execute(
                                 Agent.__table__.update()
@@ -1227,6 +1235,7 @@ class ConfigApplyService:
                             query_parameters=agent_config.queryParameters,
                             enabled_collections=agent_config.enabledCollections,
                             enabled_components=agent_config.enabledComponents,
+                            icon=agent_config.icon,
                             is_default=agent_config.isDefault,
                             user_id=self.owner_user_id,
                             is_active=True,

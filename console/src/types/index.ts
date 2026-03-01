@@ -204,6 +204,8 @@ export interface Agent {
   state_namespaces_readonly: string[] | null;
   state_namespaces_readwrite: string[] | null;
   enabled_collections: string[];
+  icon: string | null;
+  icon_url: string | null;
   is_active: boolean;
   is_default: boolean;
   created_at: string;
@@ -231,6 +233,7 @@ export interface AgentCreate {
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
+  icon?: string;
   is_default?: boolean;
 }
 
@@ -255,6 +258,7 @@ export interface AgentUpdate {
   state_namespaces_readonly?: string[];
   state_namespaces_readwrite?: string[];
   enabled_collections?: string[];
+  icon?: string;
   is_active?: boolean;
   is_default?: boolean;
 }
@@ -306,6 +310,8 @@ export interface Function {
   output_schema: Record<string, any>;
   requirements: string[];
   enabled_namespaces: string[];
+  icon: string | null;
+  icon_url: string | null;
   shared_pool: boolean;
   requires_approval: boolean;
   is_active: boolean;
@@ -322,6 +328,7 @@ export interface FunctionCreate {
   output_schema?: Record<string, any>;
   requirements?: string[];
   enabled_namespaces?: string[];
+  icon?: string;
   shared_pool?: boolean;
   requires_approval?: boolean;
 }
@@ -335,6 +342,7 @@ export interface FunctionUpdate {
   output_schema?: Record<string, any>;
   requirements?: string[];
   enabled_namespaces?: string[];
+  icon?: string;
   shared_pool?: boolean;
   requires_approval?: boolean;
   is_active?: boolean;
@@ -630,6 +638,7 @@ export interface Collection {
   post_upload_function: string | null;
   max_file_size_mb: number;
   max_total_size_gb: number;
+  is_public: boolean;
   allow_shared_files: boolean;
   allow_private_files: boolean;
   managed_by?: string | null;
@@ -646,6 +655,7 @@ export interface CollectionCreate {
   post_upload_function?: string;
   max_file_size_mb?: number;
   max_total_size_gb?: number;
+  is_public?: boolean;
   allow_shared_files?: boolean;
   allow_private_files?: boolean;
 }
@@ -656,6 +666,7 @@ export interface CollectionUpdate {
   post_upload_function?: string | null;
   max_file_size_mb?: number;
   max_total_size_gb?: number;
+  is_public?: boolean;
   allow_shared_files?: boolean;
   allow_private_files?: boolean;
 }

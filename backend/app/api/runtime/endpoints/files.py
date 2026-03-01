@@ -99,6 +99,67 @@ async def serve_file(
     )
 
 
+@router.get("/public/{namespace}/{collection}/{filename}")
+async def serve_public_file(
+    namespace: str,
+    collection: str,
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Serve a file from a public collection (no auth required).
+
+    Only works if the collection has is_public=True. Returns 404 otherwise
+    to avoid revealing collection existence.
+    """
+    # Get collection and check is_public
+    coll = await Collection.get_by_name(db, namespace, collection)
+    if not coll or not coll.is_public:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Get file
+    result = await db.execute(
+        select(File).where(
+            and_(
+                File.collection_id == coll.id,
+                File.name == filename,
+            )
+        )
+    )
+    file_record = result.scalar_one_or_none()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Get current version
+    result = await db.execute(
+        select(FileVersion).where(
+            and_(
+                FileVersion.file_id == file_record.id,
+                FileVersion.version_number == file_record.current_version,
+            )
+        )
+    )
+    file_version = result.scalar_one_or_none()
+    if not file_version:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Read content
+    storage: FileStorage = get_storage()
+    try:
+        content = await storage.read(file_version.storage_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return Response(
+        content=content,
+        media_type=file_record.content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{file_record.name}"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @router.post("/{namespace}/{collection}", response_model=FileResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     namespace: str,

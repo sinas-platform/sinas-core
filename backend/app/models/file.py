@@ -39,6 +39,7 @@ class Collection(Base, PermissionMixin):
     max_total_size_gb: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
 
     # Access control
+    is_public: Mapped[bool] = mapped_column(default=False, nullable=False)
     allow_shared_files: Mapped[bool] = mapped_column(default=True, nullable=False)
     allow_private_files: Mapped[bool] = mapped_column(default=True, nullable=False)
 
