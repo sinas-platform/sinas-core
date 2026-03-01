@@ -91,8 +91,8 @@ def _build_html_shell(component: Component, input_vars: dict) -> str:
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
 <!-- SINAS SDK and UI (globals: SinasSDK, SinasUI) -->
-<script crossorigin src="https://unpkg.com/@sinas/sdk@0.1.0/dist/sinas-sdk.umd.js"></script>
-<script crossorigin src="https://unpkg.com/@sinas/ui@0.1.0/dist/sinas-ui.umd.js"></script>
+<script crossorigin src="https://unpkg.com/@sinas/sdk@0.1.1/dist/sinas-sdk.umd.js"></script>
+<script crossorigin src="https://unpkg.com/@sinas/ui@0.1.1/dist/sinas-ui.umd.js"></script>
 
 <script>
   // SINAS runtime config
@@ -138,7 +138,10 @@ def _build_html_shell(component: Component, input_vars: dict) -> str:
     return;
   }}
 
+  var booted = false;
   function bootstrap() {{
+    if (booted) return;
+    booted = true;
     var root = ReactDOM.createRoot(document.getElementById('root'));
     var input = window.__SINAS_CONFIG__.input || {{}};
     root.render(React.createElement(Component, input));

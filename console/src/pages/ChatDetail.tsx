@@ -38,6 +38,23 @@ export function ChatDetail() {
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequiredEvent[]>([]);
   const [processingApproval, setProcessingApproval] = useState<string | null>(null);
 
+  // Forward auth token to component iframes via postMessage
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'sinas:ready') {
+        const token = localStorage.getItem('auth_token');
+        if (token && event.source) {
+          (event.source as Window).postMessage(
+            { type: 'sinas:auth', token },
+            '*'
+          );
+        }
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   const toggleToolCall = (messageId: string) => {
     setExpandedToolCalls(prev => {
       const newSet = new Set(prev);

@@ -101,22 +101,19 @@ class AgentResponse(BaseModel):
     temperature: float
     max_tokens: Optional[int]
     system_prompt: Optional[str]
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
+    input_schema: dict[str, Any] = {}
+    output_schema: dict[str, Any] = {}
     initial_messages: Optional[list[dict[str, str]]]
-    enabled_functions: list[str]  # List of "namespace/name" strings
-
-    enabled_agents: list[str]  # List of agent names that can be called as tools
-    enabled_skills: list[EnabledSkillConfig]  # List of skill configs with preload option
-    function_parameters: dict[str, Any]  # {"namespace/name": {"param": "value or {{template}}"}}
-
-    enabled_queries: list[str]  # List of "namespace/name" query references
-    query_parameters: dict[str, Any]  # {"namespace/name": {"param": "value or {{template}}"}}
-
-    state_namespaces_readonly: list[str]
-    state_namespaces_readwrite: list[str]
-    enabled_collections: list[str]
-    enabled_components: list[str]
+    enabled_functions: list[str] = []
+    enabled_agents: list[str] = []
+    enabled_skills: list[EnabledSkillConfig] = []
+    function_parameters: dict[str, Any] = {}
+    enabled_queries: list[str] = []
+    query_parameters: dict[str, Any] = {}
+    state_namespaces_readonly: list[str] = []
+    state_namespaces_readwrite: list[str] = []
+    enabled_collections: list[str] = []
+    enabled_components: list[str] = []
     is_active: bool
     is_default: bool
     created_at: datetime
