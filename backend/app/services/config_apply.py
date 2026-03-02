@@ -22,6 +22,7 @@ from app.models.query import Query
 from app.models.schedule import ScheduledJob
 from app.models.component import Component
 from app.models.skill import Skill
+from app.models.template import Template
 from app.models.user import Role, RolePermission, User, UserRole
 from app.models.webhook import Webhook
 from app.schemas.config import (
@@ -137,6 +138,8 @@ class ConfigApplyService:
                 await self._apply_queries(config.spec.queries, dry_run)
             if "collections" not in self.skip_resource_types:
                 await self._apply_collections(config.spec.collections, dry_run)
+            if "templates" not in self.skip_resource_types:
+                await self._apply_templates(config.spec.templates, dry_run)
             if "apps" not in self.skip_resource_types:
                 await self._apply_apps(config.spec.apps, dry_run)
             if "agents" not in self.skip_resource_types:
@@ -1358,6 +1361,78 @@ class ConfigApplyService:
             except Exception as e:
                 self.errors.append(f"Error applying webhook '{webhook_config.path}': {str(e)}")
 
+    async def _apply_templates(self, templates, dry_run: bool):
+        """Apply template configurations"""
+        for tmpl_config in templates:
+            resource_name = f"{tmpl_config.namespace}/{tmpl_config.name}"
+            try:
+                stmt = select(Template).where(
+                    Template.namespace == tmpl_config.namespace,
+                    Template.name == tmpl_config.name,
+                )
+                result = await self.db.execute(stmt)
+                existing = result.scalar_one_or_none()
+
+                config_hash = self._calculate_hash(
+                    {
+                        "namespace": tmpl_config.namespace,
+                        "name": tmpl_config.name,
+                        "description": tmpl_config.description,
+                        "title": tmpl_config.title,
+                        "html_content": tmpl_config.htmlContent,
+                        "text_content": tmpl_config.textContent,
+                        "variable_schema": tmpl_config.variableSchema or {},
+                    }
+                )
+
+                if existing:
+                    if existing.managed_by != self.managed_by:
+                        self.warnings.append(
+                            f"Template '{resource_name}' exists but is not managed by '{self.managed_by}'. Skipping."
+                        )
+                        self._track_change("unchanged", "templates", resource_name)
+                        continue
+
+                    if existing.config_checksum == config_hash:
+                        self._track_change("unchanged", "templates", resource_name)
+                        continue
+
+                    if not dry_run:
+                        existing.description = tmpl_config.description
+                        existing.title = tmpl_config.title
+                        existing.html_content = tmpl_config.htmlContent
+                        existing.text_content = tmpl_config.textContent
+                        existing.variable_schema = tmpl_config.variableSchema or {}
+                        existing.config_checksum = config_hash
+                        existing.updated_at = datetime.utcnow()
+
+                    self._track_change("update", "templates", resource_name)
+
+                else:
+                    if not dry_run:
+                        new_template = Template(
+                            namespace=tmpl_config.namespace,
+                            name=tmpl_config.name,
+                            description=tmpl_config.description,
+                            title=tmpl_config.title,
+                            html_content=tmpl_config.htmlContent,
+                            text_content=tmpl_config.textContent,
+                            variable_schema=tmpl_config.variableSchema or {},
+                            user_id=self.owner_user_id,
+                            created_by=self.owner_user_id,
+                            updated_by=self.owner_user_id,
+                            is_active=True,
+                            managed_by=self.managed_by,
+                            config_name=self.config_name,
+                            config_checksum=config_hash,
+                        )
+                        self.db.add(new_template)
+
+                    self._track_change("create", "templates", resource_name)
+
+            except Exception as e:
+                self.errors.append(f"Error applying template '{resource_name}': {str(e)}")
+
     async def _apply_schedules(self, schedules, dry_run: bool):
         """Apply schedule configurations"""
         for schedule_config in schedules:
@@ -1396,6 +1471,17 @@ class ConfigApplyService:
                 )
 
                 if existing:
+                    if existing.managed_by != self.managed_by:
+                        self.warnings.append(
+                            f"Schedule '{schedule_config.name}' exists but is not managed by '{self.managed_by}'. Skipping."
+                        )
+                        self._track_change("unchanged", "schedules", schedule_config.name)
+                        continue
+
+                    if existing.config_checksum == config_hash:
+                        self._track_change("unchanged", "schedules", schedule_config.name)
+                        continue
+
                     if not dry_run:
                         existing.schedule_type = schedule_type
                         existing.target_namespace = target_namespace
@@ -1405,6 +1491,7 @@ class ConfigApplyService:
                         existing.timezone = schedule_config.timezone
                         existing.input_data = schedule_config.inputData
                         existing.is_active = schedule_config.isActive
+                        existing.config_checksum = config_hash
 
                     self._track_change("update", "schedules", schedule_config.name)
 
@@ -1421,6 +1508,9 @@ class ConfigApplyService:
                             input_data=schedule_config.inputData,
                             is_active=schedule_config.isActive,
                             user_id=self.owner_user_id,
+                            managed_by=self.managed_by,
+                            config_name=self.config_name,
+                            config_checksum=config_hash,
                         )
                         self.db.add(new_schedule)
 

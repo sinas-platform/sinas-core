@@ -240,6 +240,18 @@ class CollectionConfig(BaseModel):
     allowPrivateFiles: bool = True
 
 
+class TemplateConfig(BaseModel):
+    """Template configuration"""
+
+    namespace: str = "default"
+    name: str
+    description: Optional[str] = None
+    title: Optional[str] = None
+    htmlContent: str
+    textContent: Optional[str] = None
+    variableSchema: Optional[dict[str, Any]] = None
+
+
 class ConfigSpec(BaseModel):
     """Configuration specification"""
 
@@ -253,6 +265,7 @@ class ConfigSpec(BaseModel):
     functions: list[FunctionConfig] = Field(default_factory=list)
     queries: list[QueryConfig] = Field(default_factory=list)
     collections: list[CollectionConfig] = Field(default_factory=list)
+    templates: list[TemplateConfig] = Field(default_factory=list)
     apps: list[AppConfig] = Field(default_factory=list)
     agents: list[AgentConfig] = Field(default_factory=list)
     webhooks: list[WebhookConfig] = Field(default_factory=list)

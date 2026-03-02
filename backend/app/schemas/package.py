@@ -18,7 +18,7 @@ class PackagePreviewRequest(BaseModel):
 
 class PackageResourceRef(BaseModel):
     """Reference to a resource for package creation."""
-    type: str = Field(..., description="Resource type: agent, function, skill, app, component, query, collection, webhook")
+    type: str = Field(..., description="Resource type: agent, function, skill, app, component, query, collection, template, webhook, schedule")
     namespace: str = "default"
     name: str
 

@@ -41,8 +41,20 @@ def upgrade() -> None:
     )
     op.create_index("ix_packages_name", "packages", ["name"])
 
+    # Add managed_by columns to scheduled_jobs
+    op.add_column("scheduled_jobs", sa.Column("managed_by", sa.Text(), nullable=True))
+    op.add_column("scheduled_jobs", sa.Column("config_name", sa.Text(), nullable=True))
+    op.add_column("scheduled_jobs", sa.Column("config_checksum", sa.Text(), nullable=True))
+    op.add_column("scheduled_jobs", sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
+
 
 def downgrade() -> None:
+    # Remove managed_by columns from scheduled_jobs
+    op.drop_column("scheduled_jobs", "updated_at")
+    op.drop_column("scheduled_jobs", "config_checksum")
+    op.drop_column("scheduled_jobs", "config_name")
+    op.drop_column("scheduled_jobs", "managed_by")
+
     # Drop packages table
     op.drop_index("ix_packages_name", table_name="packages")
     op.drop_table("packages")

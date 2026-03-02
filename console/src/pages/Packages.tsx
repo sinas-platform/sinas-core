@@ -32,6 +32,8 @@ export function Packages() {
   const { data: queries } = useQuery({ queryKey: ['queries'], queryFn: () => apiClient.listQueries(), enabled: showCreateModal });
   const { data: collections } = useQuery({ queryKey: ['collections'], queryFn: () => apiClient.listCollections(), enabled: showCreateModal });
   const { data: webhooks } = useQuery({ queryKey: ['webhooks'], queryFn: () => apiClient.listWebhooks(), enabled: showCreateModal });
+  const { data: templates } = useQuery({ queryKey: ['templates'], queryFn: () => apiClient.listTemplates(), enabled: showCreateModal });
+  const { data: schedules } = useQuery({ queryKey: ['schedules'], queryFn: () => apiClient.listSchedules(), enabled: showCreateModal });
 
   const previewMutation = useMutation({
     mutationFn: (source: string) => apiClient.previewPackage(source),
@@ -163,6 +165,8 @@ export function Packages() {
     { type: 'collection', label: 'Collections', items: collections?.map((c: any) => ({ namespace: c.namespace, name: c.name })) || [] },
     { type: 'app', label: 'Apps', items: apps?.map((a: any) => ({ namespace: a.namespace, name: a.name })) || [] },
     { type: 'webhook', label: 'Webhooks', items: webhooks?.map((w: any) => ({ namespace: 'default', name: w.path })) || [] },
+    { type: 'template', label: 'Templates', items: templates?.map((t: any) => ({ namespace: t.namespace, name: t.name })) || [] },
+    { type: 'schedule', label: 'Schedules', items: schedules?.map((s: any) => ({ namespace: 'default', name: s.name })) || [] },
   ].filter(s => s.items.length > 0);
 
   return (

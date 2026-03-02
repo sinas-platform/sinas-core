@@ -14,6 +14,7 @@ from app.models.function import Function
 from app.models.llm_provider import LLMProvider
 
 from app.models.schedule import ScheduledJob
+from app.models.template import Template
 from app.models.user import Role, RolePermission, User
 from app.models.webhook import Webhook
 
@@ -56,6 +57,7 @@ class ConfigExportService:
 
 
         config_dict["spec"]["functions"] = await self._export_functions()
+        config_dict["spec"]["templates"] = await self._export_templates()
         config_dict["spec"]["agents"] = await self._export_agents()
         config_dict["spec"]["webhooks"] = await self._export_webhooks()
         config_dict["spec"]["schedules"] = await self._export_schedules()
@@ -249,9 +251,35 @@ class ConfigExportService:
 
         return exported
 
+    async def _export_templates(self) -> list[dict]:
+        """Export templates"""
+        stmt = select(Template)
+        if self.managed_only:
+            stmt = stmt.where(Template.managed_by == self.managed_by)
+
+        result = await self.db.execute(stmt)
+        templates = result.scalars().all()
+
+        exported = []
+        for tmpl in templates:
+            tmpl_dict = {
+                "namespace": tmpl.namespace,
+                "name": tmpl.name,
+                "description": tmpl.description,
+                "title": tmpl.title,
+                "htmlContent": tmpl.html_content,
+                "textContent": tmpl.text_content,
+                "variableSchema": tmpl.variable_schema if tmpl.variable_schema else None,
+            }
+            exported.append(_remove_none_values(tmpl_dict))
+
+        return exported
+
     async def _export_schedules(self) -> list[dict]:
         """Export scheduled jobs"""
         stmt = select(ScheduledJob)
+        if self.managed_only:
+            stmt = stmt.where(ScheduledJob.managed_by == self.managed_by)
 
         result = await self.db.execute(stmt)
         schedules = result.scalars().all()

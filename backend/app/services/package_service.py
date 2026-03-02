@@ -15,7 +15,9 @@ from app.models.file import Collection
 from app.models.function import Function
 from app.models.package import Package
 from app.models.query import Query
+from app.models.schedule import ScheduledJob
 from app.models.skill import Skill
+from app.models.template import Template
 from app.models.webhook import Webhook
 from app.schemas.config import ConfigApplyResponse, SinasConfig
 from app.services.config_apply import ConfigApplyService
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 PACKAGE_SKIP_TYPES = {"roles", "users", "llmProviders", "databaseConnections"}
 
 # Models that support managed_by
-MANAGED_MODELS = [Agent, App, Component, Collection, Function, Query, Skill, Webhook]
+MANAGED_MODELS = [Agent, App, Component, Collection, Function, Query, ScheduledJob, Skill, Template, Webhook]
 
 
 def detach_if_package_managed(resource) -> bool:
@@ -181,7 +183,9 @@ class PackageService:
             Collection: "collections",
             Function: "functions",
             Query: "queries",
+            ScheduledJob: "schedules",
             Skill: "skills",
+            Template: "templates",
             Webhook: "webhooks",
         }
 
@@ -252,7 +256,9 @@ class PackageService:
             "component": (Component, self._export_component),
             "query": (Query, self._export_query),
             "collection": (Collection, self._export_collection),
+            "template": (Template, self._export_template),
             "webhook": (Webhook, self._export_webhook),
+            "schedule": (ScheduledJob, self._export_schedule),
         }
 
         for ref in resources:
@@ -300,7 +306,9 @@ class PackageService:
             "component": "components",
             "query": "queries",
             "collection": "collections",
+            "template": "templates",
             "webhook": "webhooks",
+            "schedule": "schedules",
         }
         return mapping.get(res_type, res_type + "s")
 
@@ -441,6 +449,17 @@ class PackageService:
             "allowPrivateFiles": collection.allow_private_files,
         })
 
+    async def _export_template(self, template: Template) -> dict:
+        return _remove_none_values({
+            "namespace": template.namespace,
+            "name": template.name,
+            "description": template.description,
+            "title": template.title,
+            "htmlContent": template.html_content,
+            "textContent": template.text_content,
+            "variableSchema": template.variable_schema if template.variable_schema else None,
+        })
+
     async def _export_webhook(self, webhook: Webhook) -> dict:
         return _remove_none_values({
             "path": webhook.path,
@@ -449,4 +468,21 @@ class PackageService:
             "requiresAuth": webhook.requires_auth,
             "description": webhook.description,
             "defaultValues": webhook.default_values or None,
+        })
+
+    async def _export_schedule(self, schedule: ScheduledJob) -> dict:
+        return _remove_none_values({
+            "name": schedule.name,
+            "scheduleType": schedule.schedule_type,
+            "functionName": f"{schedule.target_namespace}/{schedule.target_name}"
+            if schedule.schedule_type == "function"
+            else None,
+            "agentName": f"{schedule.target_namespace}/{schedule.target_name}"
+            if schedule.schedule_type == "agent"
+            else None,
+            "content": schedule.content,
+            "cronExpression": schedule.cron_expression,
+            "isActive": schedule.is_active,
+            "timezone": schedule.timezone,
+            "inputData": schedule.input_data or None,
         })
